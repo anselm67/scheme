@@ -8,6 +8,18 @@ use scheme::interp::Interp;
 fn main() {
     let mut interp = Interp::new();
 
+    let cond = interp.lookup("if");
+    let tru = interp.lookup("#f");
+
+    let cond_expr = interp.heap.alloc_list(vec![
+        cond,
+        tru,
+        Value::Integer(42),
+        Value::Integer(0),
+    ]);
+    interp.display(&cond_expr);
+
+    /*
     let add = interp.lookup("+");
     let mul = interp.lookup("*");
 
@@ -25,8 +37,9 @@ fn main() {
     ]);
 
     interp.display(&list);
+    */
 
-    let result = interp.eval(&list);
+    let result = interp.eval(&cond_expr);
     match result {
         Ok(val) => interp.display(&val),
         Err(e) => eprintln!("Error: {:?}", e),

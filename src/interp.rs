@@ -30,6 +30,8 @@ impl Interp {
     }
 
     fn init(&mut self) {
+        self.define("#t", Value::Boolean(true));
+        self.define("#f", Value::Boolean(false));
         // Initialize primitive functions
         self.define_primitives("+", primitive_add);
         self.define_primitives("*", primitive_mul);

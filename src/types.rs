@@ -12,6 +12,7 @@ pub enum SchemeError {
 
 pub trait SchemeObject {
     fn eval(&self, interp: &Interp) -> Result<Value, SchemeError>;
+    fn is_false(&self) -> bool;
     fn display(&self, interp: &Interp) -> String;
 }
 
@@ -32,6 +33,13 @@ impl SchemeObject for Value {
                 id.eval(interp)
             },
             _ => Ok(*self),
+        }
+    }
+
+    fn is_false(&self) -> bool {
+        match self {
+            Value::Boolean(false) | Value::Nil => false,
+            _ => true,
         }
     }
 
