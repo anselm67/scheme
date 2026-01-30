@@ -17,12 +17,16 @@ impl Interp {
         interp
     }
 
-    fn define_primitives(&mut self, name: &str, func: heap::PrimitiveFn) {
-        let prim = self.heap.alloc_primitive(func);
+    pub fn define(&mut self, name: &str, value: Value) {
         let symbol = self.heap.intern_symbol(name);
         if let Value::Object(id) = symbol {
-            self.env.define(id, prim);
+            self.env.define(id, value);
         }
+    }
+
+    pub fn define_primitives(&mut self, name: &str, func: heap::PrimitiveFn) {
+        let prim = self.heap.alloc_primitive(func);
+        self.define(name, prim);
     }
 
     fn init(&mut self) {

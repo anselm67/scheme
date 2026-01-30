@@ -98,7 +98,7 @@ impl SchemeObject for GcId {
             }
             HeapObject::Symbol(name) => {
                 interp.env.lookup(id)
-                    .ok_or_else(|| SchemeError::EvalError(format!("Unbound symbol with id {}", name)))
+                    .ok_or_else(|| SchemeError::UnboundVariable(format!("Unbound symbol with id {}", name)))
             }
             _ => Ok(Value::Object(id))
         }

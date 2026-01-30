@@ -6,6 +6,7 @@ pub type GcId = usize;
 pub enum SchemeError {
     EvalError(String),
     TypeError(String),
+    UnboundVariable(String)
     // Other error types can be added here
 }
 
@@ -14,7 +15,7 @@ pub trait SchemeObject {
     fn display(&self, interp: &Interp) -> String;
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
     Integer(i64),
     Float(f64),
@@ -27,7 +28,6 @@ impl SchemeObject for Value {
 
     fn eval(&self, interp: &Interp) -> Result<Value, SchemeError> {
         match self {
-            Value::Integer(_) | Value::Float(_) | Value::Boolean(_) => Ok(*self),
             Value::Object(id) => {
                 id.eval(interp)
             },
