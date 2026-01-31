@@ -1,11 +1,14 @@
 use std::{collections::HashMap};
 
-use crate::{interp::{Interp}, types::{GcId, SchemeError, SchemeObject, Value}};
+use crate::{
+    interp::{Interp}, 
+    types::{GcId, SchemeError, SchemeObject, Value},
+};
 
 pub type PrimitiveFn = fn(&Interp, &[Value]) -> Result<Value, SchemeError>;
 
 
-enum HeapObject {
+pub enum HeapObject {
     List(Vec<Value>),
     Symbol(String),
     String(String),
@@ -22,6 +25,7 @@ enum Keyword {
     Quote = 3,
     True = 4,
     False = 5,
+    SetBang = 6,
 }
 
 impl Keyword {
@@ -34,6 +38,7 @@ impl Keyword {
             3 => Some(Keyword::Quote),
             4 => Some(Keyword::True),
             5 => Some(Keyword::False),
+            6 => Some(Keyword::SetBang),
             _ => None,
         }
     }
@@ -49,6 +54,19 @@ impl Keyword {
                     Value::Boolean(true) => args[1].eval(interp),
                     Value::Boolean(false) => args[2].eval(interp),
                     _ => Err(SchemeError::TypeError("if condition must evaluate to a boolean".to_string())),
+                }
+            }
+            Keyword::SetBang => {
+                if args.len() != 2 {
+                    return Err(SchemeError::EvalError("set! expects exactly 2 arguments".to_string()));
+                }
+                let var = &args[0];
+                let value = args[1].eval(interp)?;
+                if let Value::Object(var_id) = var {
+                    interp.env.borrow_mut().set_bang(*var_id, value.clone())?;
+                    Ok(value)
+                } else {
+                    Err(SchemeError::TypeError("set! first argument must be a variable".to_string()))
                 }
             }
             _ => {
@@ -89,9 +107,11 @@ impl Heap {
         assert!(true_id == Keyword::True as usize, "Keyword '#t' should have GcId 4");
         let false_id = self.intern_symbol_to_gcid("#f");
         assert!(false_id == Keyword::False as usize, "Keyword '#f' should have GcId 5");
+        let set_bang_id = self.intern_symbol_to_gcid("set!");
+        assert!(set_bang_id == Keyword::SetBang as usize, "Keyword 'set!' should have GcId 6");
     }
 
-    fn get(&self, id: GcId) -> &HeapObject {
+    pub fn get(&self, id: GcId) -> &HeapObject {
         &self.objects[id]
     }
 
@@ -135,9 +155,10 @@ pub trait Apply {
 
 impl Apply for Value {
     fn apply(&self, interp: &Interp, args: Vec<Value>) -> Result<Value, SchemeError> {
+        let heap = interp.heap.borrow();
         match self {
             Value::Object(id) => {
-                let obj = interp.heap.get(*id);
+                let obj = heap.get(*id);
                 match obj {
                     HeapObject::Primitive(pr) => pr(interp, &args),
                     _ => Err(SchemeError::TypeError("Attempted to apply a non-primitive object".to_string())),
@@ -153,7 +174,9 @@ impl SchemeObject for GcId {
 
     fn eval(&self, interp: &Interp) -> Result<Value, SchemeError> {
         let id = *self;
-        let obj = interp.heap.get(id);
+        let heap = interp.heap.borrow();
+        let obj = heap.get(id);
+
         match obj {
             HeapObject::List(elements) => {
                 match elements.as_slice() {
@@ -164,18 +187,23 @@ impl SchemeObject for GcId {
                                 // Special form handling
                                 Keyword::eval(interp, keyword, rest)
                         } else {
-                        // Fallback if not a pecial form.
+                            // Fallback if not a pecial form.
                             let args = rest.iter()
                                 .map(|arg| arg.eval(interp))
                                 .collect::<Result<Vec<Value>, SchemeError>>()?;
-                            func.eval(interp)?.apply(&interp, args)
+                            func.eval(interp)?.apply(interp, args)
                         }
                     }    
                 }
             }
             HeapObject::Symbol(name) => {
-                interp.env.lookup(id)
-                    .ok_or_else(|| SchemeError::UnboundVariable(format!("Unbound symbol with id {}", name)))
+                let env = (*interp.env).borrow();
+                match env.lookup(id) {
+                    Some(value) => return Ok(value),
+                    None => {
+                        return Err(SchemeError::UnboundVariable(format!("Unbound symbol: {}", name)))
+                    },
+                }
             }
             _ => Ok(Value::Object(id))
         }
@@ -187,7 +215,8 @@ impl SchemeObject for GcId {
     
     fn display(&self, interp: &Interp) -> String {
         let id = *self;
-        let obj = interp.heap.get(id);
+        let heap = interp.heap.borrow();
+        let obj = heap.get(id);
         match obj {
             HeapObject::List(elements) => {
                 let elems_str: Vec<String> = elements.iter().map(|e| e.display(interp)).collect();

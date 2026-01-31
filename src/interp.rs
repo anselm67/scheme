@@ -1,35 +1,44 @@
-use crate::env;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use crate::heap;
 use crate::types::{SchemeObject, SchemeError, Value};
 
 pub struct Interp {
-    pub heap: heap::Heap,
-    pub env: env::Env,
+    pub heap: RefCell<heap::Heap>,
+    pub env: Rc<RefCell<crate::env::Env>>,
 }
 
 impl Interp {
     pub fn new() -> Self {
-        let mut interp = Self {
-            heap: heap::Heap::new(),
-            env: env::Env::new(),
+        let global_env = crate::env::Env {
+            bindings: HashMap::new(),
+            parent: None,
+        };
+        let env_handle = Rc::new(RefCell::new(global_env));
+        let heap_handlee = RefCell::new(heap::Heap::new());
+        let interp = Self {
+            heap: heap_handlee,
+            env: env_handle,
         };
         interp.init();
         interp
     }
 
-    pub fn define(&mut self, name: &str, value: Value) {
-        let symbol = self.heap.intern_symbol(name);
+    pub fn define(&self, name: &str, value: Value) {
+        let symbol = self.heap.borrow_mut().intern_symbol(name);
         if let Value::Object(id) = symbol {
-            self.env.define(id, value);
+            self.env.borrow_mut().define(id, value);
         }
     }
 
-    pub fn define_primitives(&mut self, name: &str, func: heap::PrimitiveFn) {
-        let prim = self.heap.alloc_primitive(func);
+    pub fn define_primitives(&self, name: &str, func: heap::PrimitiveFn) {
+        let prim = self.heap.borrow_mut().alloc_primitive(func);
         self.define(name, prim);
     }
 
-    fn init(&mut self) {
+    fn init(&self) {
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
         // Initialize primitive functions
@@ -37,12 +46,12 @@ impl Interp {
         self.define_primitives("*", primitive_mul);
     }
 
-    pub fn lookup(&mut self, name: &str) -> Value {
-        self.heap.intern_symbol(name)
+    pub fn lookup(&self, name: &str) -> Value {
+        self.heap.borrow_mut().intern_symbol(name)
     }
 
-    pub fn eval(&mut self, obj: &Value)  -> Result<Value, SchemeError> {
-        obj.eval(&self) 
+    pub fn eval(&self, obj: &Value)  -> Result<Value, SchemeError> {
+        obj.eval(self) 
     }
 
     pub fn display(&self, obj: &Value) {

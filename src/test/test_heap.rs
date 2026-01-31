@@ -17,10 +17,12 @@ fn test_intern_symbol() {
 
 #[test]
 fn test_eval_symbol() {
-    let mut interp = Interp::new();
-
+    let interp = Interp::new();
+    let mut heap = interp.heap.borrow_mut();
     // Creates an unbound symbol, and attempt to evaluate it.
-    let symbol = interp.heap.intern_symbol("test-symbol");
+    let symbol = heap.intern_symbol("test-symbol");
+    drop(heap);
+
     let result = interp.eval(&symbol);
     assert!(matches!(result, Err(UnboundVariable(_))), "Evaluated result should be an UnboundVariable error");
 
@@ -31,9 +33,10 @@ fn test_eval_symbol() {
 
 #[test]
 fn test_eval_string() {
-    let mut interp = Interp::new();
-
-    let string = interp.heap.alloc_string("Hello, World!");
+    let interp = Interp::new();
+    let mut heap = interp.heap.borrow_mut();
+    let string = heap.alloc_string("Hello, World!");
+    drop(heap);
     let Value::Object(string_id) = string else {
         panic!("Expected Value::Object");
     };
@@ -43,11 +46,13 @@ fn test_eval_string() {
 
 #[test]
 fn test_true_and_false_symbols() {
-    let mut interp = Interp::new();
+    let interp = Interp::new();
+    let mut heap = interp.heap.borrow_mut();
 
-    let true_sym = interp.heap.intern_symbol("#t");
-    let false_sym = interp.heap.intern_symbol("#f");
-
+    let true_sym = heap.intern_symbol("#t");
+    let false_sym = heap.intern_symbol("#f");
+    drop(heap);
+    
     assert!(matches!(interp.eval(&true_sym), Ok(Value::Boolean(true))), "#t should evaluate to Boolean(true)");
     assert!(matches!(interp.eval(&false_sym), Ok(Value::Boolean(false))), "#f should evaluate to Boolean(false)");  
 }

@@ -6,17 +6,19 @@ use scheme::interp::Interp;
 
 
 fn main() {
-    let mut interp = Interp::new();
+    let interp = Interp::new();
 
     let cond = interp.lookup("if");
     let tru = interp.lookup("#f");
 
-    let cond_expr = interp.heap.alloc_list(vec![
+    let mut heap = interp.heap.borrow_mut();
+    let cond_expr = heap.alloc_list(vec![
         cond,
         tru,
         Value::Integer(42),
         Value::Integer(0),
     ]);
+    drop(heap);
     interp.display(&cond_expr);
 
     /*

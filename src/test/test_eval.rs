@@ -3,7 +3,7 @@ fn test_eval_self_types() {
     use crate::interp::Interp;
     use crate::types::Value;
 
-    let mut interp = Interp::new();
+    let interp = Interp::new();
 
     let int_val = Value::Integer(42);
     let float_val = Value::Float(3.14);
