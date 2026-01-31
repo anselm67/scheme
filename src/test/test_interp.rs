@@ -1,8 +1,5 @@
-use std::vec;
+use crate::{interp::Interp, types::Value};
 
-use scheme::types::Value;
-
-use scheme::interp::{self, Interp};
 
 fn eval_expr(interp: &Interp, expr: &Value) {
     interp.display(expr);
@@ -13,7 +10,9 @@ fn eval_expr(interp: &Interp, expr: &Value) {
     }
 }
 
-fn test_cond(interp: &Interp) {
+#[test]
+fn test_cond() {
+    let interp = Interp::new();
     let cond = interp.lookup("if");
     let tru = interp.lookup("#t");
     let fls = interp.lookup("#f");
@@ -35,12 +34,15 @@ fn test_cond(interp: &Interp) {
     ]);
     drop(heap);
 
-    eval_expr(interp, &cond_expr_true);
-    eval_expr(interp, &cond_expr_false);
-}   
+    eval_expr(&interp, &cond_expr_true);
+    eval_expr(&interp, &cond_expr_false);
+}  
 
-fn test_nested_expr(interp: &Interp) {
-        let add = interp.lookup("+");
+#[test]
+fn test_nested_expr() {
+    let interp = Interp::new();
+    
+    let add = interp.lookup("+");
     let mul = interp.lookup("*");
     let mut heap = interp.heap.borrow_mut();
 
@@ -57,11 +59,6 @@ fn test_nested_expr(interp: &Interp) {
         Value::Integer(2),
     ]);
     drop(heap);
-    eval_expr(interp, &list);
-}
-fn main() {
-    let interp = Interp::new();
-
-    test_cond(&interp);
-    test_nested_expr(&interp);
+    
+    eval_expr(&interp, &list);
 }

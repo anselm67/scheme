@@ -7,4 +7,5 @@ pub mod env;
 mod test {
     mod test_heap;
     mod test_eval;
+    mod test_interp;
 }
