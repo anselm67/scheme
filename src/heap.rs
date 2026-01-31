@@ -116,9 +116,9 @@ impl Heap {
         Value::Object(id)
     }
 
-    pub fn alloc_string(&mut self, s: String) -> Value {
+    pub fn alloc_string(&mut self, s: impl Into<String>) -> Value {
         let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::String(s));
+        self.objects.push(HeapObject::String(s.into()));
         Value::Object(id)
     }
 

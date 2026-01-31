@@ -28,3 +28,26 @@ fn test_eval_symbol() {
     interp.define("test-symbol", Value::Integer(42));
     assert!(matches!(interp.eval(&symbol), Ok(Value::Integer(42))), "Evaluated symbol should return bound value");
 }
+
+#[test]
+fn test_eval_string() {
+    let mut interp = Interp::new();
+
+    let string = interp.heap.alloc_string("Hello, World!");
+    let Value::Object(string_id) = string else {
+        panic!("Expected Value::Object");
+    };
+    let result = interp.eval(&string);
+    assert!(matches!(result, Ok(Value::Object(id)) if id == string_id), "Evaluated string should return the same object ID");
+}
+
+#[test]
+fn test_true_and_false_symbols() {
+    let mut interp = Interp::new();
+
+    let true_sym = interp.heap.intern_symbol("#t");
+    let false_sym = interp.heap.intern_symbol("#f");
+
+    assert!(matches!(interp.eval(&true_sym), Ok(Value::Boolean(true))), "#t should evaluate to Boolean(true)");
+    assert!(matches!(interp.eval(&false_sym), Ok(Value::Boolean(false))), "#f should evaluate to Boolean(false)");  
+}
