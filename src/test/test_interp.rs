@@ -59,6 +59,27 @@ fn test_nested_expr() {
         Value::Integer(2),
     ]);
     drop(heap);
-    
+
     eval_expr(&interp, &list);
+}
+
+
+#[test]
+fn test_setbang_special_form() {
+    let interp = Interp::new();
+    
+    let define = interp.lookup("define");
+    let x = interp.lookup("x");
+
+    let mut heap = interp.heap.borrow_mut();
+
+    let expr= heap.alloc_list(vec![
+        define,
+        x,
+        Value::Integer(1)
+    ]);
+    drop(heap);
+    
+    eval_expr(&interp, &expr);
+    eval_expr(&interp, &x);
 }

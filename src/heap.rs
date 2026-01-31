@@ -56,6 +56,19 @@ impl Keyword {
                     _ => Err(SchemeError::TypeError("if condition must evaluate to a boolean".to_string())),
                 }
             }
+            Keyword::Define => {
+                if args.len() != 2 {
+                    return Err(SchemeError::EvalError("define! expects exactly 2 arguments".to_string()));
+                }
+                let var = &args[0];
+                let value = args[1].eval(interp)?;
+                if let Value::Object(var_id) = var {
+                    interp.env.borrow_mut().define(*var_id, value);
+                    Ok(value)
+                } else {
+                    Err(SchemeError::TypeError("set! first argument must be a variable".to_string()))
+                }
+            }
             Keyword::SetBang => {
                 if args.len() != 2 {
                     return Err(SchemeError::EvalError("set! expects exactly 2 arguments".to_string()));
@@ -63,7 +76,7 @@ impl Keyword {
                 let var = &args[0];
                 let value = args[1].eval(interp)?;
                 if let Value::Object(var_id) = var {
-                    interp.env.borrow_mut().set_bang(*var_id, value.clone())?;
+                    interp.env.borrow_mut().set_bang(*var_id, value)?;
                     Ok(value)
                 } else {
                     Err(SchemeError::TypeError("set! first argument must be a variable".to_string()))
