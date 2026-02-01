@@ -226,7 +226,7 @@ pub trait Apply {
 }
 
 impl Apply for Value {
-    fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) -> Result<Value, SchemeError> {
+    fn apply(&self, interp: &Interp, _env: &Rc<RefCell<Env>>, args: Vec<Value>) -> Result<Value, SchemeError> {
         let heap = interp.heap.borrow();
         let obj = {
             match self {

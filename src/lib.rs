@@ -2,7 +2,7 @@ pub mod types;
 pub mod heap;
 pub mod interp;
 pub mod env;
-
+pub mod parser;
 #[cfg(test)]
 mod test {
     mod test_heap;

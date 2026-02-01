@@ -4,11 +4,12 @@ use crate::{env::Env, interp::Interp};
 
 pub type GcId = usize;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SchemeError {
     EvalError(String),
     TypeError(String),
-    UnboundVariable(String)
+    UnboundVariable(String),
+    SyntaxError(String),
     // Other error types can be added here
 }
 
