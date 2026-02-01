@@ -1,18 +1,26 @@
-use std::{collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    interp::{Interp}, 
-    types::{GcId, SchemeError, SchemeObject, Value},
+    env::Env, interp::Interp, types::{GcId, SchemeError, SchemeObject, Value}
 };
 
 pub type PrimitiveFn = fn(&Interp, &[Value]) -> Result<Value, SchemeError>;
 
 
+#[derive(Clone)]
+pub struct Closure {
+    params: Vec<GcId>,
+    body: Vec<Value>,
+    env: Rc<RefCell<Env>>,
+}
+
+#[derive(Clone)]
 pub enum HeapObject {
     List(Vec<Value>),
     Symbol(String),
     String(String),
     Primitive(PrimitiveFn),
+    Closure(Closure),
     // Other heap-allocated object types can be added here
 }
 
@@ -27,6 +35,30 @@ enum Keyword {
     False = 5,
     SetBang = 6,
 }
+
+fn extract_param_ids(interp: &Interp, params: &Value) -> Result<Vec<GcId>, SchemeError> {
+    if let Value::Object(id) = params {
+        let heap = interp.heap.borrow();
+        let obj = heap.get(*id);
+        match obj {
+            HeapObject::List(elements) => {
+                let ids = elements.iter().try_fold(Vec::new(), |mut acc, elem| {
+                    if let Value::Object(param_id) = elem {
+                        acc.push(*param_id);
+                        Ok(acc)
+                    } else {
+                        Err(SchemeError::TypeError("Lambda parameters must be symbols".to_string()))
+                    }
+                })?;
+                return Ok(ids)
+            },
+            _ => return Err(SchemeError::TypeError("Lambda parameters must be a list".to_string())),
+        }
+    } else {
+        return Err(SchemeError::TypeError("Lambda parameters must be a list".to_string()));
+    }
+}
+
 
 impl Keyword {
 
@@ -43,16 +75,16 @@ impl Keyword {
         }
     }
 
-    fn eval(interp: &Interp, keyword: Keyword, args: &[Value]) -> Result<Value, SchemeError> {
+    fn eval(interp: &Interp, env: &Rc<RefCell<Env>>, keyword: Keyword, args: &[Value]) -> Result<Value, SchemeError> {
         match keyword {
             Keyword::If => {
                 if args.len() != 3 {
                     return Err(SchemeError::EvalError("if expects exactly 3 arguments".to_string()));
                 }
-                let condition = args[0].eval(interp)?;
+                let condition = args[0].eval(interp, env)?;
                 match condition {
-                    Value::Boolean(true) => args[1].eval(interp),
-                    Value::Boolean(false) => args[2].eval(interp),
+                    Value::Boolean(true) => args[1].eval(interp, env),
+                    Value::Boolean(false) => args[2].eval(interp, env),
                     _ => Err(SchemeError::TypeError("if condition must evaluate to a boolean".to_string())),
                 }
             }
@@ -61,22 +93,43 @@ impl Keyword {
                     return Err(SchemeError::EvalError("define! expects exactly 2 arguments".to_string()));
                 }
                 let var = &args[0];
-                let value = args[1].eval(interp)?;
+                let value = args[1].eval(interp, env)?;
                 if let Value::Object(var_id) = var {
-                    interp.env.borrow_mut().define(*var_id, value);
+                    env.borrow_mut().define(*var_id, value);
                     Ok(value)
                 } else {
                     Err(SchemeError::TypeError("set! first argument must be a variable".to_string()))
                 }
+            }
+            Keyword::Lambda => {
+                match args {
+                    [params_value, body @ ..] => {
+                        let params = extract_param_ids(interp, params_value)?;
+                        let mut heap = interp.heap.borrow_mut();
+                        let closure = heap.alloc_closure(Closure {
+                            params,
+                            body: body.to_vec(),
+                            env: Rc::clone(&interp.env),
+                        });
+                        Ok(closure) 
+                    },
+                    _ => Err(SchemeError::EvalError("lambda expects at least 2 arguments".to_string())),
+                }
+            }
+            Keyword::Quote => {
+                if args.len() != 1 {
+                    return Err(SchemeError::EvalError("quote expects exactly 1 argument".to_string()));
+                }
+                Ok(args[0])
             }
             Keyword::SetBang => {
                 if args.len() != 2 {
                     return Err(SchemeError::EvalError("set! expects exactly 2 arguments".to_string()));
                 }
                 let var = &args[0];
-                let value = args[1].eval(interp)?;
+                let value = args[1].eval(interp, env)?;
                 if let Value::Object(var_id) = var {
-                    interp.env.borrow_mut().set_bang(*var_id, value)?;
+                    env.borrow_mut().set_bang(*var_id, value)?;
                     Ok(value)
                 } else {
                     Err(SchemeError::TypeError("set! first argument must be a variable".to_string()))
@@ -161,34 +214,58 @@ impl Heap {
         Value::Object(id)
     }
 
+    pub fn alloc_closure(&mut self, closure: Closure) -> Value {
+        let id: GcId = self.objects.len();
+        self.objects.push(HeapObject::Closure(closure));
+        Value::Object(id)
+    }
+
 }
 pub trait Apply {
-    fn apply(&self, interp: &Interp, args: Vec<Value>) -> Result<Value, SchemeError>;
+    fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) -> Result<Value, SchemeError>;
 }
 
 impl Apply for Value {
-    fn apply(&self, interp: &Interp, args: Vec<Value>) -> Result<Value, SchemeError> {
+    fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) -> Result<Value, SchemeError> {
         let heap = interp.heap.borrow();
-        match self {
-            Value::Object(id) => {
-                let obj = heap.get(*id);
-                match obj {
-                    HeapObject::Primitive(pr) => pr(interp, &args),
-                    _ => Err(SchemeError::TypeError("Attempted to apply a non-primitive object".to_string())),
+        let obj = {
+            match self {
+                Value::Object(id) => heap.get(*id),
+                _ => return Err(SchemeError::TypeError("Attempted to apply a non-object value".to_string())),
+            }
+        };
+        
+        match obj {
+            HeapObject::Closure(closure) => {
+                if closure.params.len() != args.len() {
+                    return Err(SchemeError::EvalError("Incorrect number of arguments passed to closure".to_string()));
                 }
+                let new_env = Env::extend(closure.env.clone());
+                for (param_id, arg_value) in closure.params.iter().zip(args.iter()) {
+                    new_env.borrow_mut().define(*param_id, *arg_value);
+                }
+                let mut result = Value::Nil;
+                for expr in &closure.body {
+                    result = expr.eval(interp, &new_env)?;
+                }
+                Ok(result)
             },
-            _ => Err(SchemeError::TypeError("Attempted to apply a non-object value".to_string())),
+            HeapObject::Primitive(pr) => pr(interp, &args),
+            _ => Err(SchemeError::TypeError("Attempted to apply a non-primitive object".to_string())),
         }
     }
 }
 
 
+
 impl SchemeObject for GcId {
 
-    fn eval(&self, interp: &Interp) -> Result<Value, SchemeError> {
+    fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError> {
         let id = *self;
-        let heap = interp.heap.borrow();
-        let obj = heap.get(id);
+        let obj = {
+            let heap = interp.heap.borrow();
+            heap.get(id).clone()
+        };
 
         match obj {
             HeapObject::List(elements) => {
@@ -198,20 +275,19 @@ impl SchemeObject for GcId {
                         if let Value::Object(func_id) = func 
                             && let Some(keyword) = Keyword::from_id(*func_id) {
                                 // Special form handling
-                                Keyword::eval(interp, keyword, rest)
+                                Keyword::eval(interp, env, keyword, rest)
                         } else {
                             // Fallback if not a pecial form.
                             let args = rest.iter()
-                                .map(|arg| arg.eval(interp))
+                                .map(|arg| arg.eval(interp, env))
                                 .collect::<Result<Vec<Value>, SchemeError>>()?;
-                            func.eval(interp)?.apply(interp, args)
+                            func.eval(interp, env)?.apply(interp, env, args)
                         }
                     }    
                 }
             }
             HeapObject::Symbol(name) => {
-                let env = (*interp.env).borrow();
-                match env.lookup(id) {
+                match env.borrow().lookup(id) {
                     Some(value) => return Ok(value),
                     None => {
                         return Err(SchemeError::UnboundVariable(format!("Unbound symbol: {}", name)))
@@ -236,8 +312,9 @@ impl SchemeObject for GcId {
                 format!("({})", elems_str.join(" "))
             },
             HeapObject::Symbol(s) => format!("{}", s),
-            HeapObject::Primitive(pr) => format!("<primitive {:p}>", pr),
             HeapObject::String(s) => format!("\"{}\"", s),
+            HeapObject::Primitive(pr) => format!("<primitive {:p}>", pr),
+            HeapObject::Closure(_) => format!("<closure {}>", id)
         }
     }
 }

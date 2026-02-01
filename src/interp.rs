@@ -51,7 +51,7 @@ impl Interp {
     }
 
     pub fn eval(&self, obj: &Value)  -> Result<Value, SchemeError> {
-        obj.eval(self) 
+        obj.eval(self, &self.env) 
     }
 
     pub fn display(&self, obj: &Value) {

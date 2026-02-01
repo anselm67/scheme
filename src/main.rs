@@ -2,7 +2,7 @@ use std::vec;
 
 use scheme::types::Value;
 
-use scheme::interp::{self, Interp};
+use scheme::interp::{Interp};
 
 fn eval_expr(interp: &Interp, expr: &Value) {
     interp.display(expr);
@@ -40,7 +40,7 @@ fn test_cond(interp: &Interp) {
 }   
 
 fn test_nested_expr(interp: &Interp) {
-        let add = interp.lookup("+");
+    let add = interp.lookup("+");
     let mul = interp.lookup("*");
     let mut heap = interp.heap.borrow_mut();
 
@@ -59,9 +59,41 @@ fn test_nested_expr(interp: &Interp) {
     drop(heap);
     eval_expr(interp, &list);
 }
+
+fn test_lambda() {
+    let interp = Interp::new();
+
+    let x = interp.lookup("x");
+    let add = interp.lookup("+");
+    let lambda = interp.lookup("lambda");
+
+    let mut heap = interp.heap.borrow_mut();
+
+    let params = heap.alloc_list(vec![x]);
+    let body = heap.alloc_list(vec![
+        add,
+        x,
+        Value::Integer(1),
+    ]);
+    let lambda = heap.alloc_list(vec![
+        lambda,
+        params,
+        body,
+    ]);
+    let call = heap.alloc_list(vec![
+        lambda,
+        Value::Integer(41),
+    ]);
+    drop(heap);
+
+    eval_expr(&interp, &call);
+}
+
+
 fn main() {
     let interp = Interp::new();
 
     test_cond(&interp);
     test_nested_expr(&interp);
+    test_lambda()
 }

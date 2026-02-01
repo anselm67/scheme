@@ -1,4 +1,6 @@
-use crate::interp::Interp;
+use std::{cell::RefCell, rc::Rc};
+
+use crate::{env::Env, interp::Interp};
 
 pub type GcId = usize;
 
@@ -11,7 +13,7 @@ pub enum SchemeError {
 }
 
 pub trait SchemeObject {
-    fn eval(&self, interp: &Interp) -> Result<Value, SchemeError>;
+    fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError>;
     fn is_false(&self) -> bool;
     fn display(&self, interp: &Interp) -> String;
 }
@@ -27,10 +29,10 @@ pub enum Value {
 
 impl SchemeObject for Value {
 
-    fn eval(&self, interp: &Interp) -> Result<Value, SchemeError> {
+    fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError> {
         match self {
             Value::Object(id) => {
-                id.eval(interp)
+                id.eval(interp, env)
             },
             _ => Ok(*self),
         }

@@ -17,6 +17,13 @@ impl Env {
         }
     }
 
+    pub fn extend(parent: Rc<RefCell<Env>>) -> Rc<RefCell<Env>> {
+        Rc::new(RefCell::new(Env {
+            bindings: HashMap::new(),
+            parent: Some(parent),
+        }))
+    }
+
     pub fn define(&mut self, key: GcId, value: Value) {
         self.bindings.insert(key, value);
     }
