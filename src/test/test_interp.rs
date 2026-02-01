@@ -1,11 +1,11 @@
-use crate::{interp::Interp, types::Value};
+use crate::{interp::Interp, parser::Parser, types::Value};
 
 
-fn eval_expr(interp: &Interp, expr: &Value) {
+fn eval_expr(interp: &Interp, expr: Value) {
     interp.display(expr);
     let result = interp.eval(expr);
     match result {
-        Ok(val) => interp.display(&val),
+        Ok(val) => interp.display(val),
         Err(e) => eprintln!("Error: {:?}", e),
     }
 }
@@ -34,8 +34,8 @@ fn test_cond() {
     ]);
     drop(heap);
 
-    eval_expr(&interp, &cond_expr_true);
-    eval_expr(&interp, &cond_expr_false);
+    eval_expr(&interp, cond_expr_true);
+    eval_expr(&interp, cond_expr_false);
 }  
 
 #[test]
@@ -60,7 +60,7 @@ fn test_nested_expr() {
     ]);
     drop(heap);
 
-    eval_expr(&interp, &list);
+    eval_expr(&interp, list);
 }
 
 
@@ -80,6 +80,34 @@ fn test_setbang_special_form() {
     ]);
     drop(heap);
     
-    eval_expr(&interp, &expr);
-    eval_expr(&interp, &x);
+    eval_expr(&interp, expr);
+    eval_expr(&interp, x);
+}
+
+#[test]
+fn test_read_eval_some() {
+    let inputs = vec![
+        ("((lambda (x) (+ x 1)) 2)", Value::Integer(3)),
+        ("((lambda (x y) (+ x y)) 1 2)", Value::Integer(3)),
+        ("(* 3 2)", Value::Integer(6))
+    ];
+    let interp = Interp::new();
+    for (text, expected) in inputs {
+        let mut parser = Parser::new(text.as_bytes());
+        let expr = parser.read(&interp);
+        match expr {
+            Ok(expr) => {
+                match interp.eval(expr) {
+                    Ok(value) => assert_eq!(value, expected),
+                    Err(e) => panic!("Eval {} failed with error: {:?}", text, e)
+                }
+            },
+            Err(e) => panic!("Parse {} failed, error: {:?}.", text, e)
+        }
+        
+
+
+        
+
+    }
 }

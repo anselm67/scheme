@@ -29,16 +29,22 @@ impl<R: Read> Parser<R> {
         match self.peek() {
             Some(actual) if actual == expected => {self.next(); Ok(()) },
             Some(actual) => Err(SchemeError::SyntaxError(format!(
-                "Expected {}, found {}", expected as char, actual as char
+                "Expected '{}', found {}", expected as char, actual as char
             ))),
             None => Err(SchemeError::SyntaxError(format!(
-                "Expected {}, but reached end of file.", expected
+                "Expected '{}', but reached end of file.", expected as char
             )))
         }
     }
 
     fn is_whitespace(&self, ch: u8) -> bool {
         ch.is_ascii_whitespace()
+    }
+
+    fn is_symbol(&self, ch: u8) -> bool {
+        matches!(ch, b'a'..=b'z' | b'A'..=b'Z' 
+            | b'+' | b'-' | b'*' | b'/'| b'>' | b'<'| b'='
+            | b'!' | b'?')
     }
 
     fn skip_whitespace(&mut self) {
@@ -154,8 +160,28 @@ impl<R: Read> Parser<R> {
         return Ok(Value::Boolean(value))
     }
 
-    fn parse_string(&mut self, _interp: &Interp) -> Result<Value, SchemeError> {
-        return Err(SchemeError::SyntaxError("Not implemented".to_string()));
+    fn parse_string(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
+        let mut token = String::new();
+        self.check_for(b'"')?;
+        while let Some(ch) = self.peek() {
+            self.next();
+            if ch == b'"' {
+                let mut heap = interp.heap.borrow_mut();
+                return Ok(heap.alloc_string(token));
+            } else if ch == b'\\' {
+                match self.next() {
+                    Some(ch) => token.push(ch as char),
+                    None => return Err(SchemeError::SyntaxError(format!(
+                        "Unexpected enf of file while parsing string."                    
+                    )))
+                }
+            } else {
+                token.push(ch as char);
+            }
+        }
+        return Err(SchemeError::SyntaxError(format!(
+            "Unexpected enf of file while parsing string."
+        )))
     }
 
     fn parse_list(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
@@ -190,7 +216,7 @@ impl<R: Read> Parser<R> {
             Some(ch) if ch.is_ascii_digit() || ch == b'-' || ch == b'+' => {
                 self.parse_number()
             },
-            Some(ch) if ch.is_ascii_alphabetic() => {
+            Some(ch) if self.is_symbol(ch) => {
                 self.parse_symbol(interp)
             },
             Some(ch) if ch == b'#' => {
@@ -207,8 +233,6 @@ impl<R: Read> Parser<R> {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::SchemeObject;
-
     use super::*;
 
     #[test]
@@ -268,26 +292,16 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_list() {
-        let inputs = vec![
-            "(1 2 3)",
-            "((lambda (x) (+ x 1)) 2)"
-        ];
+    fn test_parse_string() {
         let interp = Interp::new();
+        let inputs = vec![
+            "\"Hello World\"",
+        ];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
-            let expr = parser.read(&interp);
-            match expr {
-                Ok(expr) => {
-                    println!("{} => {}", text, expr.display(&interp));
-                    let result = interp.eval(&expr);
-                    match result {
-                        Ok(value) => println!(" = {}", value.display(&interp)),
-                        Err(e) => println!(" Eval failed: {:?}", e)
-                    }
-                },
-                Err(e) => println!("Failed {:?}", e)
-            }
+            let result = parser.parse_string(&interp);
+            assert!(matches!(result, Ok(Value::Object(_id))));
         }
     }
+
 }

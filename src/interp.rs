@@ -50,11 +50,11 @@ impl Interp {
         self.heap.borrow_mut().intern_symbol(name)
     }
 
-    pub fn eval(&self, obj: &Value)  -> Result<Value, SchemeError> {
+    pub fn eval(&self, obj: Value)  -> Result<Value, SchemeError> {
         obj.eval(self, &self.env) 
     }
 
-    pub fn display(&self, obj: &Value) {
+    pub fn display(&self, obj: Value) {
         let output = obj.display(&self);
         println!("{}", output);
     }
