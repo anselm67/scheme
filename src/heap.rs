@@ -9,18 +9,19 @@ pub type PrimitiveFn = fn(&Interp, &[Value]) -> Result<Value, SchemeError>;
 
 #[derive(Clone)]
 pub struct Closure {
-    params: Vec<GcId>,
-    body: Vec<Value>,
+    params: Box<[GcId]>,
+    body: Box<[Value]>,
     env: Rc<RefCell<Env>>,
 }
 
 #[derive(Clone)]
 pub enum HeapObject {
+    FreeSlot(),
     List(Vec<Value>),
     Symbol(String),
     String(String),
     Primitive(PrimitiveFn),
-    Closure(Closure),
+    Closure(Box<Closure>),
     // Other heap-allocated object types can be added here
 }
 
@@ -107,8 +108,8 @@ impl Keyword {
                         let params = extract_param_ids(interp, params_value)?;
                         let mut heap = interp.heap.borrow_mut();
                         let closure = heap.alloc_closure(Closure {
-                            params,
-                            body: body.to_vec(),
+                            params: params.into_boxed_slice(),
+                            body: body.to_vec().into_boxed_slice(),
                             env: Rc::clone(&interp.env),
                         });
                         Ok(closure) 
@@ -216,7 +217,7 @@ impl Heap {
 
     pub fn alloc_closure(&mut self, closure: Closure) -> Value {
         let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::Closure(closure));
+        self.objects.push(HeapObject::Closure(Box::new(closure)));
         Value::Object(id)
     }
 
@@ -293,7 +294,10 @@ impl SchemeObject for GcId {
                         return Err(SchemeError::UnboundVariable(format!("Unbound symbol: {}", name)))
                     },
                 }
-            }
+            },
+            HeapObject::FreeSlot() => Err(SchemeError::ImplementationError(format!(
+                "Request to evaluate FreeSlot at {}", id
+            ))),
             _ => Ok(Value::Object(id))
         }
     }
@@ -314,7 +318,8 @@ impl SchemeObject for GcId {
             HeapObject::Symbol(s) => format!("{}", s),
             HeapObject::String(s) => format!("\"{}\"", s),
             HeapObject::Primitive(pr) => format!("<primitive {:p}>", pr),
-            HeapObject::Closure(_) => format!("<closure {}>", id)
+            HeapObject::Closure(_) => format!("<closure {}>", id),
+            HeapObject::FreeSlot() => format!("*** FREE SLOT ***")
         }
     }
 }

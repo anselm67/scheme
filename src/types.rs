@@ -10,6 +10,7 @@ pub enum SchemeError {
     TypeError(String),
     UnboundVariable(String),
     SyntaxError(String),
+    ImplementationError(String),
     // Other error types can be added here
 }
 
