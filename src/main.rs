@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, process};
 
 use scheme::parser::Parser;
 use scheme::types::Value;
@@ -21,6 +21,7 @@ fn repl(interp: &Interp) {
     loop {
         let expr = parser.read(interp);
         match expr {
+            Ok(Value::Nil) => process::exit(0),
             Ok(expr) => eval_expr(interp, expr),
             Err(e) => eprintln!("Error: {:?}", e),
         }

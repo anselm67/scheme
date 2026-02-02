@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, fmt, convert::TryFrom};
+use std::{cell::RefCell, cmp::Ordering, convert::TryFrom, fmt, rc::Rc};
 
 use crate::{env::Env, interp::Interp};
 
@@ -79,6 +79,71 @@ impl std::ops::Mul for Number {
             (Number::Int(a), Number::Float(b)) => Number::Float(a as f64 * b),
             (Number::Float(a), Number::Int(b)) => Number::Float(a * b as f64),
             (Number::Float(a), Number::Float(b)) => Number::Float(a * b),
+        }
+    }
+}
+
+impl std::ops::Neg for Number {
+    type Output = Number;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            Number::Int(i) => Number::Int(-i),
+            Number::Float(f) => Number::Float(-f),
+        }
+    }
+}
+
+impl std::ops::Sub for Number {
+    type Output = Number;
+
+    fn sub(self, other: Self) -> Number {
+        match (self, other) {
+            (Number::Int(a), Number::Int(b)) => Number::Int(a - b),
+            (Number::Int(a), Number::Float(b)) => Number::Float(a as f64 - b),
+            (Number::Float(a), Number::Int(b)) => Number::Float(a - b as f64),
+            (Number::Float(a), Number::Float(b)) => Number::Float(a - b),
+        }
+    }
+}
+
+impl std::ops::Div for Number {
+    type Output = Number;
+
+    fn div(self, other: Self) -> Self::Output {
+        match (self, other) {
+            // Strict promotion (simplest for now), even 4 / 2 becomes 2.0
+            (Number::Int(a), Number::Int(b)) => Number::Float(a as f64 / b as f64),
+            (Number::Int(a), Number::Float(b)) => Number::Float(a as f64 / b),
+            (Number::Float(a), Number::Int(b)) => Number::Float(a / b as f64),
+            (Number::Float(a), Number::Float(b)) => Number::Float(a / b),
+        }
+    }
+}
+
+impl std::ops::Rem for Number {
+    type Output = Number;
+
+    fn rem(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (Number::Int(a), Number::Int(b)) => Number::Int(a % b),
+            // For floats, Rust uses the same logic as f64.rem()
+            (Number::Int(a), Number::Float(b)) => Number::Float(a as f64 % b),
+            (Number::Float(a), Number::Int(b)) => Number::Float(a % b as f64),
+            (Number::Float(a), Number::Float(b)) => Number::Float(a % b),
+        }
+    }
+}
+
+impl PartialOrd for Number {
+
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Number::Int(a), Number::Int(b)) => a.partial_cmp(b),
+            (Number::Float(a), Number::Float(b)) => a.partial_cmp(b),
+            // Promotion: Convert Int to Float for comparison
+            (Number::Int(a), Number::Float(b)) => (*a as f64).partial_cmp(b),
+            (Number::Float(a), Number::Int(b)) => a.partial_cmp(&(*b as f64)),
         }
     }
 }

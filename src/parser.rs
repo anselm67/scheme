@@ -43,7 +43,7 @@ impl<R: Read> Parser<R> {
 
     fn is_symbol(&self, ch: u8) -> bool {
         matches!(ch, b'a'..=b'z' | b'A'..=b'Z' 
-            | b'+' | b'-' | b'*' | b'/'| b'>' | b'<'| b'='
+            | b'+' | b'-' | b'*' | b'/'| b'>' | b'<'| b'=' | b'%'
             | b'!' | b'?')
     }
 
@@ -231,10 +231,7 @@ impl<R: Read> Parser<R> {
                     "Unexpected character {}", ch as char)
                 ))
             },
-            None => {
-                self.next();
-                Err(SchemeError::SyntaxError("Unexpected end of input".to_string()))
-            },
+            None => Ok(Value::Nil),
         };
     }
 }

@@ -89,7 +89,25 @@ fn test_read_eval_some() {
     let inputs = vec![
         ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
         ("((lambda (x y) (+ x y)) 1 2)", Value::Number(Number::Int(3))),
-        ("(* 3 2)", Value::Number(Number::Int(6)))
+        ("(* 3 2)", Value::Number(Number::Int(6))),
+        ("(- 1)",  Value::Number(Number::Int(-1))),
+        ("(- 2 1)",  Value::Number(Number::Int(1))),
+        ("(/ 2)",  Value::Number(Number::Float(0.5))),
+        ("(/ 4 2)",  Value::Number(Number::Float(2.0))),
+        ("(% 10 3)",  Value::Number(Number::Int(1))),
+        ("(= 10. 10.0)",  Value::Boolean(true)),
+        ("(> 10 3)",  Value::Boolean(true)),
+        ("(>= 10 10)",  Value::Boolean(true)),
+        ("(< 10 3)",  Value::Boolean(false)),
+        ("(<= 3 3)",  Value::Boolean(true)),
+        ("(number? 1)",  Value::Boolean(true)),
+        ("(number? \"x\")",  Value::Boolean(false)),
+        ("(integer? 1)",  Value::Boolean(true)),
+        ("(integer? 1.0)",  Value::Boolean(false)),
+        ("(float? 1.0)",  Value::Boolean(true)),
+        ("(float? 1)",  Value::Boolean(false)),
+        ("(max 4 2.0 1)",  Value::Number(Number::Int(4))),
+        ("(min 4 2.0 7)",  Value::Number(Number::Float(2.0))),
     ];
     let interp = Interp::new();
     for (text, expected) in inputs {
@@ -104,10 +122,6 @@ fn test_read_eval_some() {
             },
             Err(e) => panic!("Parse {} failed, error: {:?}.", text, e)
         }
-        
-
-
-        
-
     }
 }
+

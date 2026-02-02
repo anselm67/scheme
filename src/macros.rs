@@ -20,11 +20,11 @@ macro_rules! extract_args {
 }
 
 #[macro_export]
-macro_rules! all_numbers {
-    ($args:expr) => {
+macro_rules! all_of_type {
+    ($args:expr, $variant:path, $type_name:expr) => {
         $args.into_iter().map(|v| match v {
-            Value::Number(n) => Ok(n),
-            _ => Err(SchemeError::TypeError(format!("Expected a Number."))),
-        }).collect::<Result<Vec<_>, _>>()?
+            $variant(inner) => Ok(*inner),
+            _ => Err(SchemeError::TypeError($type_name.to_string())),
+        }).collect::<Result<Vec<_>, SchemeError>>()?
     };
 }

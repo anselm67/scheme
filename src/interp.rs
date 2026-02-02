@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::process;
 use std::rc::Rc;
 
-use crate::{all_numbers, extract_args, heap};
+use crate::{all_of_type, extract_args, heap};
 use crate::types::{Number, SchemeError, SchemeObject, Value};
 
 pub struct Interp {
@@ -43,9 +43,21 @@ impl Interp {
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
         // Initialize primitive functions
+        self.define_primitive("number?", primitive_number_p);
+        self.define_primitive("integer?", primitive_integer_p);
+        self.define_primitive("float?", primitive_float_p);
         self.define_primitive("+", primitive_add);
+        self.define_primitive("-", primitive_sub);
         self.define_primitive("*", primitive_mul);
+        self.define_primitive("/", primitive_div);
+        self.define_primitive("%", primitive_rem);
         self.define_primitive("=", primitive_number_eq);
+        self.define_primitive("<", primitive_number_lt);
+        self.define_primitive(">", primitive_number_gt);
+        self.define_primitive("<=", primitive_number_lte);
+        self.define_primitive(">=", primitive_number_gte);
+        self.define_primitive("max", primitive_number_max);
+        self.define_primitive("min", primitive_number_min);
         self.define_primitive("quit", primitive_quit);
         self.define_primitive("exit", primitive_quit);
     }
@@ -65,17 +77,59 @@ impl Interp {
 }
 
 fn primitive_add(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
-    let nums = all_numbers!(args);
+    let nums = all_of_type!(args, Value::Number, "Number");
     let sum = nums.into_iter()
-        .fold(Number::Int(0), |acc, n| acc  + *n);
+        .fold(Number::Int(0), |acc, n| acc  + n);
     Ok(Value::Number(sum))
 }
 
+fn primitive_sub(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    let nums = all_of_type!(args, Value::Number, "Number");
+    if nums.is_empty() {
+        return Err(SchemeError::ArgCountError(
+            "- expects at least one arg.".to_string()
+        ))
+    }
+
+    let mut iter = nums.into_iter();
+    let init = iter.next().unwrap();
+    let sub = if let None = iter.clone().next() {
+        - init
+    } else {
+        iter.fold(init, |acc, n| acc - n)
+    };
+    Ok(Value::Number(sub))
+}
+
+fn primitive_div(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    let nums = all_of_type!(args, Value::Number, "Number");
+    if nums.is_empty() {
+        return Err(SchemeError::ArgCountError(
+            "- expects at least one arg.".to_string()
+        ))
+    }
+
+    let mut iter = nums.into_iter();
+    let init = iter.next().unwrap();
+    let div = if let None = iter.clone().next() {
+        Number::Float(1.0) / init
+    } else {
+        iter.fold(init, |acc, n| acc / n)
+    };
+    Ok(Value::Number(div))
+}
+
+
 fn primitive_mul(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
-    let nums = all_numbers!(args);
+    let nums = all_of_type!(args, Value::Number, "Number");
     let mul = nums.into_iter()
-        .fold(Number::Int(1), |acc, n| acc * *n);
+        .fold(Number::Int(1), |acc, n| acc * n);
     Ok(Value::Number(mul))
+}
+
+fn primitive_rem(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, a: Number, b: Number);
+    Ok(Value::Number(*a % *b))
 }
 
 fn primitive_quit(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
@@ -92,4 +146,81 @@ fn primitive_quit(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError
 fn primitive_number_eq(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
     return Ok(Value::Boolean(a == b))
+}
+
+fn primitive_number_lt(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, a: Number, b: Number);
+    return Ok(Value::Boolean(a < b))
+}
+
+fn primitive_number_lte(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, a: Number, b: Number);
+    return Ok(Value::Boolean(a <= b))
+}
+
+fn primitive_number_gt(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, a: Number, b: Number);
+    return Ok(Value::Boolean(a > b))
+}
+
+fn primitive_number_gte(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, a: Number, b: Number);
+    return Ok(Value::Boolean(a >= b))
+}
+
+fn primitive_number_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    if args.is_empty() {
+        return Err(SchemeError::ArgCountError(
+            "numberp? expects exactly one arg.".to_string()));
+    }
+    match args[0] {
+        Value::Number(_) => Ok(Value::Boolean(true)),
+        _ => Ok(Value::Boolean(false))
+    }
+}
+
+fn primitive_integer_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    if args.is_empty() {
+        return Err(SchemeError::ArgCountError(
+            "integer? expects exactly one arg.".to_string()));
+    }
+    match args[0] {
+        Value::Number(Number::Int(_)) => Ok(Value::Boolean(true)),
+        _ => Ok(Value::Boolean(false))
+    }
+}
+
+fn primitive_float_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    if args.is_empty() {
+        return Err(SchemeError::ArgCountError(
+            "float? expects exactly one arg.".to_string()));
+    }
+    match args[0] {
+        Value::Number(Number::Float(_)) => Ok(Value::Boolean(true)),
+        _ => Ok(Value::Boolean(false))
+    }
+}
+
+fn primitive_number_max(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    let nums = all_of_type!(args, Value::Number, "Number");
+    if nums.is_empty() {
+        return Err(SchemeError::ArgCountError(
+            "max expects at least one arg.".to_string()));
+    }
+    let init = nums[0];
+    let ret = nums.into_iter()
+        .fold(init, |a, b| if a > b { a } else { b });
+    Ok(Value::Number(ret))
+}
+
+fn primitive_number_min(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    let nums = all_of_type!(args, Value::Number, "Number");
+    if nums.is_empty() {
+        return Err(SchemeError::ArgCountError(
+            "min expects at least one arg.".to_string()));
+    }
+    let init = nums[0];
+    let ret = nums.into_iter()
+        .fold(init, |a, b| if a < b { a } else { b });
+    Ok(Value::Number(ret))
 }
