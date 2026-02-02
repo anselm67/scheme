@@ -176,6 +176,18 @@ pub enum Value {
     Nil
 }
 
+impl Value {
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::Number(_) => "Number",
+            Self::Boolean(_) => "Boolean",
+            Self::Object(_) => "Object",
+            Self::Nil => "Nil",
+        }
+    }
+}
+
 impl SchemeObject for Value {
 
     fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError> {

@@ -16,13 +16,27 @@ pub struct Closure {
 
 #[derive(Clone)]
 pub enum HeapObject {
-    FreeSlot(),
+    FreeSlot(GcId),
     List(Vec<Value>),
     Symbol(String),
     String(String),
     Primitive(PrimitiveFn),
     Closure(Box<Closure>),
     // Other heap-allocated object types can be added here
+}
+
+impl HeapObject {
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::FreeSlot(_) => "FreeSlot",
+            Self::List(_) => "List",
+            Self::Symbol(_) => "Symbol",
+            Self::String(_) => "String",
+            Self::Primitive(_) => "Primitive",
+            Self::Closure(_) => "Closure",
+        }
+    }
 }
 
 #[repr(usize)]
@@ -228,14 +242,14 @@ pub trait Apply {
 
 impl Apply for Value {
     fn apply(&self, interp: &Interp, _env: &Rc<RefCell<Env>>, args: Vec<Value>) -> Result<Value, SchemeError> {
-        let heap = interp.heap.borrow();
         let obj = {
+            let heap = interp.heap.borrow();
             match self {
-                Value::Object(id) => heap.get(*id),
+                Value::Object(id) => heap.get(*id).clone(),
                 _ => return Err(SchemeError::TypeError("Attempted to apply a non-object value".to_string())),
             }
         };
-        
+    
         match obj {
             HeapObject::Closure(closure) => {
                 if closure.params.len() != args.len() {
@@ -267,7 +281,7 @@ impl SchemeObject for GcId {
             let heap = interp.heap.borrow();
             heap.get(id).clone()
         };
-
+        
         match obj {
             HeapObject::List(elements) => {
                 match elements.as_slice() {
@@ -295,7 +309,7 @@ impl SchemeObject for GcId {
                     },
                 }
             },
-            HeapObject::FreeSlot() => Err(SchemeError::ImplementationError(format!(
+            HeapObject::FreeSlot(_) => Err(SchemeError::ImplementationError(format!(
                 "Request to evaluate FreeSlot at {}", id
             ))),
             _ => Ok(Value::Object(id))
@@ -319,7 +333,7 @@ impl SchemeObject for GcId {
             HeapObject::String(s) => format!("\"{}\"", s),
             HeapObject::Primitive(pr) => format!("<primitive {:p}>", pr),
             HeapObject::Closure(_) => format!("<closure {}>", id),
-            HeapObject::FreeSlot() => format!("*** FREE SLOT ***")
+            HeapObject::FreeSlot(_) => format!("*** FREE SLOT ***")
         }
     }
 }
