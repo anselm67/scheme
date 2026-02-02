@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::{io, process};
 
 use scheme::parser::Parser;
@@ -6,10 +7,12 @@ use scheme::types::Value;
 use scheme::interp::{Interp};
 
 fn eval_expr(interp: &Interp, expr: Value) {
-    interp.display(expr);
     let result = interp.eval(expr);
     match result {
-        Ok(val) => interp.display(val),
+        Ok(val) => {
+            print!(" = ");
+            interp.display(val)
+        },
         Err(e) => eprintln!("Error: {:?}", e),
     }
 }
@@ -19,6 +22,8 @@ fn repl(interp: &Interp) {
     let mut parser = Parser::new(input);
     
     loop {
+        print!("? ");
+        io::stdout().flush().unwrap();
         let expr = parser.read(interp);
         match expr {
             Ok(Value::Nil) => process::exit(0),

@@ -89,6 +89,8 @@ fn test_read_eval_some() {
     let inputs = vec![
         ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
         ("((lambda (x y) (+ x y)) 1 2)", Value::Number(Number::Int(3))),
+
+        // Some number test.
         ("(* 3 2)", Value::Number(Number::Int(6))),
         ("(- 1)",  Value::Number(Number::Int(-1))),
         ("(- 2 1)",  Value::Number(Number::Int(1))),
@@ -108,6 +110,8 @@ fn test_read_eval_some() {
         ("(float? 1)",  Value::Boolean(false)),
         ("(max 4 2.0 1)",  Value::Number(Number::Int(4))),
         ("(min 4 2.0 7)",  Value::Number(Number::Float(2.0))),
+
+        // Some list tests.
     ];
     let interp = Interp::new();
     for (text, expected) in inputs {

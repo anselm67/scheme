@@ -63,16 +63,6 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn check_for_whitespaces(&mut self) -> Result<(), SchemeError> {
-        match self.peek() {
-            Some(ch) if ch.is_ascii_whitespace() => Ok(()),
-            None => Ok(()),
-            Some(ch) => Err(SchemeError::SyntaxError(format!(
-                "Expected end of file or a whitespace, got {} instead.", ch
-            )))
-        }
-    }
-
     fn parse_number_with_sign(&mut self, sign: Option<u8>) -> Result<Value, SchemeError> {
         let mut token = String::new();
         if let Some(ch) = sign {
@@ -157,7 +147,7 @@ impl<R: Read> Parser<R> {
                 "Unexpected end of file while parsing a # expression.".to_string()
             ))
         };
-        self.check_for_whitespaces()?;
+        // self.next();
         return Ok(Value::Boolean(value))
     }
 

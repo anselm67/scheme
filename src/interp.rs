@@ -65,7 +65,7 @@ impl Interp {
         self.define_primitive("list?", primitive_list_p);
         self.define_primitive("null?", primitive_null_p);
         // self.define_primitive("cons", primitive_list_cons);
-        // self.define_primitive("car", primitive_list_car);
+        self.define_primitive("car", primitive_list_car);
         self.define_primitive("cdr", primitive_list_cdr);
 
         // Initialize system primitive functions.
@@ -245,22 +245,20 @@ fn primitive_list(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError>
 }
 
 fn primitive_list_p(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
-    if args.len() != 1 {
-        Err(SchemeError::ArgCountError(format!(
-            "list? expects one arg, but got {}", args.len()
-        )))
-    } else {
-        match args[0] {
-            Value::Object(id) => {
-                let heap = interp.heap.borrow();
-                let obj = heap.get(id);
-                match obj {
-                    HeapObject::List(_) => Ok(Value::Boolean(true)),
-                    _ => Ok(Value::Boolean(false))
-                }
-            },
-            _ => Ok(Value::Boolean(false)),
-        }
+    if args.is_empty()  {
+        return Err(SchemeError::ArgCountError(format!(
+            "list? takes exactly one arg, but got {}.", args.len()
+        )));
+    }
+    match args[0] {
+        Value::Object(id) => {
+            let list = interp.heap.borrow().get(id).clone();
+            match list {
+                HeapObject::List(_) => Ok(Value::Boolean(true)),
+                _ => Ok(Value::Boolean(false))
+            }
+        },
+        _ => Ok(Value::Boolean(false))
     }
 }
 
@@ -278,9 +276,24 @@ fn primitive_null_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeErr
 
 // }
 
-// fn primitive_car(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
-
-// }
+fn primitive_list_car(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, id: Object);
+    let list = interp.heap.borrow().get(*id).clone();
+    match list {
+        HeapObject::List(v) => {
+            if v.is_empty() {
+                return Err(SchemeError::EvalError(
+                    "Can't take the car of an empty list.".to_string()
+                ));
+            } else {
+                Ok(v[0])
+            }
+        }
+        _ => return Err(SchemeError::TypeError(format!(
+            "Invalid type {} for cdr, expecting a List", list.type_name()
+        )))
+    }
+}
 
 fn primitive_list_cdr(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
     extract_args!(args, 1, id: Object);
@@ -301,36 +314,3 @@ fn primitive_list_cdr(interp: &Interp, args: &[Value]) -> Result<Value, SchemeEr
         )))
     }
 }
-
-    // if args.len() != 1 {
-    //     return Err(SchemeError::ArgCountError(format!(
-    //         "cdr expects exactly 1 arg, got {}", args.len()
-    //     )));
-    // }
-    // let id = match args[0] {
-    //     Value::Object(id) => id,
-    //     any => return Err(SchemeError::TypeError(format!(
-    //         "Expected a List, got a {}", any.type_name()
-    //     )))
-    // };
-
-    // let cdr_data = {
-    //     let heap = interp.heap.borrow();
-    //     let obj = heap.get(id);
-    //     match obj {
-    //         HeapObject::List(v) => {
-    //             if v.is_empty() {
-    //                 return Err(SchemeError::EvalError("no cdr on empty list.".to_string()));
-    //             }
-    //             v[1..].to_vec()
-    //         },
-    //         any => {
-    //             return Err(SchemeError::TypeError(format!(
-    //                 "Expected a List, got a {}", any.type_name()
-    //             )));
-    //         },
-    //     }
-    // };
-    // let mut heap = interp.heap.borrow_mut();
-    // Ok(heap.alloc_list(cdr_data))
-
