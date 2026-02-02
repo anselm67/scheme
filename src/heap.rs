@@ -27,7 +27,7 @@ pub enum HeapObject {
 
 #[repr(usize)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum Keyword {
+pub enum Keyword {
     If = 0,
     Define = 1,
     Lambda = 2,

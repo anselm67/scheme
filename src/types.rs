@@ -198,8 +198,9 @@ impl SchemeObject for Value {
         match self {
             Value::Object(id) => id.display(interp),
             Value::Number(n) => n.to_string(),
-            Value::Boolean(b) => b.to_string(),
-            Value::Nil => "nil".to_string(),
+            Value::Boolean(true) => "#t".to_string(),
+            Value::Boolean(false) => "#f".to_string(),
+            Value::Nil => "()".to_string(),
         }
     }
 

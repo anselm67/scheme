@@ -42,7 +42,7 @@ impl Interp {
     fn init(&self) {
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
-        // Initialize primitive functions
+        // Initialize math primitive functions
         self.define_primitive("number?", primitive_number_p);
         self.define_primitive("integer?", primitive_integer_p);
         self.define_primitive("float?", primitive_float_p);
@@ -58,6 +58,10 @@ impl Interp {
         self.define_primitive(">=", primitive_number_gte);
         self.define_primitive("max", primitive_number_max);
         self.define_primitive("min", primitive_number_min);
+
+        // Initialize list functions.
+        
+        // Initialize system primitive functions.
         self.define_primitive("quit", primitive_quit);
         self.define_primitive("exit", primitive_quit);
     }

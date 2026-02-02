@@ -1,6 +1,7 @@
 use std::io::{BufReader, Bytes, Read};
 use std::iter::Peekable;
 
+use crate::heap::{Keyword};
 use crate::interp::Interp;
 use crate::types::{Number, SchemeError, Value};
 
@@ -224,6 +225,15 @@ impl<R: Read> Parser<R> {
             },
             Some(b'"') => {
                 return self.parse_string(interp)
+            },
+            Some(ch) if ch == b'\'' => {
+                self.next();
+                let quoted = self.read(interp)?;
+                let value = vec![
+                    Value::Object(Keyword::Quote as usize), 
+                    quoted,
+                ];
+                Ok(interp.heap.borrow_mut().alloc_list(value))
             },
             Some(ch) => {
                 self.next();
