@@ -2,7 +2,7 @@ use std::io::{BufReader, Bytes, Read};
 use std::iter::Peekable;
 
 use crate::interp::Interp;
-use crate::types::{SchemeError, Value};
+use crate::types::{Number, SchemeError, Value};
 
 
 pub struct Parser<R: Read> {
@@ -108,12 +108,12 @@ impl<R: Read> Parser<R> {
         }
         if has_dot || has_exponent {
             match token.parse::<f64>() {
-                Ok(num) => Ok(Value::Float(num)),
+                Ok(num) => Ok(Value::Number(Number::Float(num))),
                 Err(_) => Err(SchemeError::SyntaxError(format!("Invalid number: {}", token))),  
             }
         } else {    
             match token.parse::<i64>() {
-                Ok(num) => Ok(Value::Integer(num)),
+                Ok(num) => Ok(Value::Number(Number::Int(num))),
                 Err(_) => Err(SchemeError::SyntaxError(format!("Invalid number: {}", token))),  
             }
         }
@@ -225,8 +225,16 @@ impl<R: Read> Parser<R> {
             Some(b'"') => {
                 return self.parse_string(interp)
             },
-            Some(_) => Err(SchemeError::SyntaxError("Unexpected character".to_string())),
-            None => Err(SchemeError::SyntaxError("Unexpected end of input".to_string())),
+            Some(ch) => {
+                self.next();
+                Err(SchemeError::SyntaxError(format!(
+                    "Unexpected character {}", ch as char)
+                ))
+            },
+            None => {
+                self.next();
+                Err(SchemeError::SyntaxError("Unexpected end of input".to_string()))
+            },
         };
     }
 }
@@ -239,13 +247,13 @@ mod tests {
     fn test_parse_number() {
         let inputs = vec!["42", "-3", "0", "3.14", "-0.001", "2e10", "-1.5E-3"];
         let expected = vec![
-            Value::Integer(42),
-            Value::Integer(-3),
-            Value::Integer(0),              
-            Value::Float(3.14),
-            Value::Float(-0.001),
-            Value::Float(2e10),
-            Value::Float(-1.5e-3),
+            Value::Number(Number::Int(42)),
+            Value::Number(Number::Int(-3)),
+            Value::Number(Number::Int(0)),              
+            Value::Number(Number::Float(3.14)),
+            Value::Number(Number::Float(-0.001)),
+            Value::Number(Number::Float(2e10)),
+            Value::Number(Number::Float(-1.5e-3)),
         ];  
         for (input, expect) in inputs.iter().zip(expected.iter()) {
             let mut parser = Parser::new(input.as_bytes());

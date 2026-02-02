@@ -3,6 +3,7 @@ pub mod heap;
 pub mod interp;
 pub mod env;
 pub mod parser;
+pub mod macros;
 #[cfg(test)]
 mod test {
     mod test_heap;

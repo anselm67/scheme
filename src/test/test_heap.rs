@@ -1,7 +1,7 @@
 use crate::heap::Heap;
 use crate::interp::Interp;
 use crate::types::SchemeError::UnboundVariable;
-use crate::types::Value;
+use crate::types::{Number, Value};
 
 #[test]
 fn test_intern_symbol() {
@@ -26,9 +26,10 @@ fn test_eval_symbol() {
     let result = interp.eval(symbol);
     assert!(matches!(result, Err(UnboundVariable(_))), "Evaluated result should be an UnboundVariable error");
 
-    // Bind the symbol, check valye.
-    interp.define("test-symbol", Value::Integer(42));
-    assert!(matches!(interp.eval(symbol), Ok(Value::Integer(42))), "Evaluated symbol should return bound value");
+    // Bind the symbol, check value.
+    let value = Value::Number(Number::Int(32));
+    interp.define("test-symbol", value);
+    assert!(matches!(interp.eval(symbol), Ok(x) if x == value), "Evaluated symbol should return bound value");
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use crate::{interp::Interp, parser::Parser, types::Value};
+use crate::{interp::Interp, parser::Parser, types::{Number, Value}};
 
 
 fn eval_expr(interp: &Interp, expr: Value) {
@@ -22,15 +22,15 @@ fn test_cond() {
     let cond_expr_true = heap.alloc_list(vec![
         cond,
         tru,
-        Value::Integer(42),
-        Value::Integer(0),
+        Value::Number(Number::Int(42)),
+        Value::Number(Number::Int(0)),
     ]);
 
     let cond_expr_false = heap.alloc_list(vec![
         cond,
         fls,
-        Value::Integer(42),
-        Value::Integer(0),
+        Value::Number(Number::Int(42)),
+        Value::Number(Number::Int(0)),
     ]);
     drop(heap);
 
@@ -48,15 +48,15 @@ fn test_nested_expr() {
 
     let expr= heap.alloc_list(vec![
         mul,
-        Value::Integer(2),
-        Value::Integer(3),
+        Value::Number(Number::Int(2)),
+        Value::Number(Number::Int(3)),
     ]);
 
     let list: Value = heap.alloc_list(vec![
         add,
         expr,
-        Value::Integer(1),
-        Value::Integer(2),
+        Value::Number(Number::Int(1)),
+        Value::Number(Number::Int(2)),
     ]);
     drop(heap);
 
@@ -76,7 +76,7 @@ fn test_setbang_special_form() {
     let expr= heap.alloc_list(vec![
         define,
         x,
-        Value::Integer(1)
+        Value::Number(Number::Int(1))
     ]);
     drop(heap);
     
@@ -87,9 +87,9 @@ fn test_setbang_special_form() {
 #[test]
 fn test_read_eval_some() {
     let inputs = vec![
-        ("((lambda (x) (+ x 1)) 2)", Value::Integer(3)),
-        ("((lambda (x y) (+ x y)) 1 2)", Value::Integer(3)),
-        ("(* 3 2)", Value::Integer(6))
+        ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
+        ("((lambda (x y) (+ x y)) 1 2)", Value::Number(Number::Int(3))),
+        ("(* 3 2)", Value::Number(Number::Int(6)))
     ];
     let interp = Interp::new();
     for (text, expected) in inputs {

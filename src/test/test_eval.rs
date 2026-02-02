@@ -1,3 +1,5 @@
+use crate::types::Number;
+
 #[test]
 fn test_eval_self_types() {
     use crate::interp::Interp;
@@ -5,8 +7,8 @@ fn test_eval_self_types() {
 
     let interp = Interp::new();
 
-    let int_val = Value::Integer(42);
-    let float_val = Value::Float(3.14);
+    let int_val = Value::Number(Number::Int(342));
+    let float_val = Value::Number(Number::Float(3.14));
     let bool_val = Value::Boolean(true);
     let nil_val = Value::Nil;
 

@@ -1,9 +1,10 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::process;
 use std::rc::Rc;
 
-use crate::heap;
-use crate::types::{SchemeObject, SchemeError, Value};
+use crate::{all_numbers, extract_args, heap};
+use crate::types::{Number, SchemeError, SchemeObject, Value};
 
 pub struct Interp {
     pub heap: RefCell<heap::Heap>,
@@ -33,7 +34,7 @@ impl Interp {
         }
     }
 
-    pub fn define_primitives(&self, name: &str, func: heap::PrimitiveFn) {
+    pub fn define_primitive(&self, name: &str, func: heap::PrimitiveFn) {
         let prim = self.heap.borrow_mut().alloc_primitive(func);
         self.define(name, prim);
     }
@@ -42,8 +43,11 @@ impl Interp {
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
         // Initialize primitive functions
-        self.define_primitives("+", primitive_add);
-        self.define_primitives("*", primitive_mul);
+        self.define_primitive("+", primitive_add);
+        self.define_primitive("*", primitive_mul);
+        self.define_primitive("=", primitive_number_eq);
+        self.define_primitive("quit", primitive_quit);
+        self.define_primitive("exit", primitive_quit);
     }
 
     pub fn lookup(&self, name: &str) -> Value {
@@ -61,21 +65,31 @@ impl Interp {
 }
 
 fn primitive_add(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
-    let sum = args.iter().try_fold(0, |acc, val| {
-        match val {
-            Value::Integer(i) => Ok(acc + i),
-            _ => Err(SchemeError::TypeError("Expected integer".to_string())),
-        }
-    })?;
-    Ok(Value::Integer(sum))
+    let nums = all_numbers!(args);
+    let sum = nums.into_iter()
+        .fold(Number::Int(0), |acc, n| acc  + *n);
+    Ok(Value::Number(sum))
 }
 
 fn primitive_mul(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
-    let sum = args.iter().try_fold(1, |acc, val| {
-        match val {
-            Value::Integer(i) => Ok(acc * i),
-            _ => Err(SchemeError::TypeError("Expected integer".to_string())),
-        }
-    })?;
-    Ok(Value::Integer(sum))
+    let nums = all_numbers!(args);
+    let mul = nums.into_iter()
+        .fold(Number::Int(1), |acc, n| acc * *n);
+    Ok(Value::Number(mul))
+}
+
+fn primitive_quit(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, exit_code: Number);
+    match i32::try_from(*exit_code) {
+        Ok(code) => process::exit(code),
+        Err(_) => Err(SchemeError::OverflowError(format!(
+            "Overflow while converting {} to i32", exit_code)
+        ))
+    }
+
+}
+
+fn primitive_number_eq(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, a: Number, b: Number);
+    return Ok(Value::Boolean(a == b))
 }
