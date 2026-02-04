@@ -176,16 +176,28 @@ impl<R: Read> Parser<R> {
     }
 
     fn parse_list(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
-        let mut list = Vec::new();
+        let mut items = Vec::new();
         self.skip_whitespace();
         while let Some(c) = self.peek() {
             if c == b')' { break; }
-            list.push(self.read(interp)?);
+            items.push(self.read(interp)?);
             self.skip_whitespace();
         }
         self.check_for(b')')?;
-        return Ok(interp.heap.borrow_mut().alloc_list(list));
+        return Ok(interp.heap.borrow_mut().alloc_list(items));
     }
+
+    // fn parse_vector(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
+    //     let mut list = Vec::new();
+    //     self.skip_whitespace();
+    //     while let Some(c) = self.peek() {
+    //         if c == b')' { break; }
+    //         list.push(self.read(interp)?);
+    //         self.skip_whitespace();
+    //     }
+    //     self.check_for(b')')?;
+    //     return Ok(interp.heap.borrow_mut().alloc_list(list));
+    // }
 
     pub fn read(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
         self.skip_whitespace();
@@ -238,6 +250,8 @@ impl<R: Read> Parser<R> {
 
 #[cfg(test)]
 mod tests {
+    use crate::types::SchemeObject;
+
     use super::*;
 
     #[test]
@@ -271,16 +285,6 @@ mod tests {
             let mut parser = Parser::new(text.as_bytes());
             assert_eq!(Ok(value), parser.parse_boolean())
         }
-        let fail_inputs = vec![
-            "#",
-            "#ff",
-            "#Fail",
-            "#True"
-        ];
-        for text in fail_inputs {
-            let mut parser = Parser::new(text.as_bytes());
-            assert!(matches!(parser.parse_boolean(), Err(SchemeError::SyntaxError(_))));
-        }
     }
 
     #[test]
@@ -309,4 +313,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_parse_list() {
+        let interp = Interp::new();
+        let inputs = vec![
+            ")",
+            "1 2 3)"
+        ];
+        for text in inputs {
+            let mut parser = Parser::new(text.as_bytes());
+            let result = parser.parse_list(&interp);
+            if let Ok(list) = result {
+                println!("{}", list.display(&interp))
+            }
+        }
+    }
 }

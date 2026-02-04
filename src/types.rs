@@ -1,6 +1,6 @@
 use std::{cell::RefCell, cmp::Ordering, convert::TryFrom, fmt, rc::Rc};
 
-use crate::{env::Env, interp::Interp};
+use crate::{env::Env, heap::HeapObject, interp::Interp};
 
 pub type GcId = usize;
 
@@ -186,6 +186,57 @@ impl Value {
             Self::Nil => "Nil",
         }
     }
+
+    pub fn is_nil(self) -> bool {
+        matches!(self, Value::Nil)
+    }
+
+    pub fn is_object(self, _interp: &Interp) -> Option<GcId> {
+        match self {
+            Value::Object(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub fn to_object(self, _interp: &Interp) -> Result<GcId, SchemeError> {
+        match self {
+            Value::Object(id) => Ok(id),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected an Object, got a {}", self.type_name()
+            ))),
+        }
+    }
+
+    pub fn is_pair(self, interp: &Interp) -> Option<(Value, Value)> {
+        if let Some(id) = self.is_object(interp) {
+            match interp.heap.borrow().get(id) {
+                HeapObject::Pair(car, cdr) => Some((*car, *cdr)),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn to_pair(self, interp: &Interp) -> Result<(Value, Value), SchemeError> {
+        let id = self.to_object(interp)?;
+        match interp.heap.borrow().get(id) {
+            HeapObject::Pair(car, cdr) => Ok((*car, *cdr)),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected a Pair, but got a {}.", self.type_name()))),
+        }
+    }
+
+    pub fn to_symbol(self, interp: &Interp) -> Result<GcId, SchemeError> {
+        let id = self.to_object(interp)?;
+        match interp.heap.borrow().get(id) {
+            HeapObject::Symbol(_) => Ok(id),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected a Symbol, but got a {}.", self.type_name()
+            )))
+        }
+    }
+
 }
 
 impl SchemeObject for Value {

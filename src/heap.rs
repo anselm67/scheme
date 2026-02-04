@@ -17,6 +17,7 @@ pub struct Closure {
 #[derive(Clone)]
 pub enum HeapObject {
     FreeSlot(GcId),
+    Pair(Value, Value),
     List(Vec<Value>),
     Symbol(String),
     String(String),
@@ -30,6 +31,7 @@ impl HeapObject {
     pub fn type_name(&self) -> &'static str {
         match self {
             Self::FreeSlot(_) => "FreeSlot",
+            Self::Pair(..) => "Pair",
             Self::List(_) => "List",
             Self::Symbol(_) => "Symbol",
             Self::String(_) => "String",
@@ -51,27 +53,16 @@ pub enum Keyword {
     SetBang = 6,
 }
 
-fn extract_param_ids(interp: &Interp, params: &Value) -> Result<Vec<GcId>, SchemeError> {
-    if let Value::Object(id) = params {
-        let heap = interp.heap.borrow();
-        let obj = heap.get(*id);
-        match obj {
-            HeapObject::List(elements) => {
-                let ids = elements.iter().try_fold(Vec::new(), |mut acc, elem| {
-                    if let Value::Object(param_id) = elem {
-                        acc.push(*param_id);
-                        Ok(acc)
-                    } else {
-                        Err(SchemeError::TypeError("Lambda parameters must be symbols".to_string()))
-                    }
-                })?;
-                return Ok(ids)
-            },
-            _ => return Err(SchemeError::TypeError("Lambda parameters must be a list".to_string())),
+fn extract_param_ids(interp: &Interp, params: Value) -> Result<Vec<GcId>, SchemeError> {
+    let ids = interp.heap.borrow().fold_list(
+        interp, params, 
+        Vec::new(), 
+        |mut acc, param| {
+            acc.push(param.to_symbol(interp)?);
+            Ok(acc)
         }
-    } else {
-        return Err(SchemeError::TypeError("Lambda parameters must be a list".to_string()));
-    }
+    );
+    ids
 }
 
 
@@ -119,7 +110,7 @@ impl Keyword {
             Keyword::Lambda => {
                 match args {
                     [params_value, body @ ..] => {
-                        let params = extract_param_ids(interp, params_value)?;
+                        let params = extract_param_ids(interp, *params_value)?;
                         let mut heap = interp.heap.borrow_mut();
                         let closure = heap.alloc_closure(Closure {
                             params: params.into_boxed_slice(),
@@ -211,10 +202,30 @@ impl Heap {
         Value::Object(self.intern_symbol_to_gcid(name))
     }
 
-    pub fn alloc_list(&mut self, elements: Vec<Value>) -> Value {
+    pub fn alloc_pair(&mut self, car: Value, cdr: Value) -> Value {
         let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::List(elements));
+        self.objects.push(HeapObject::Pair(car, cdr));
         Value::Object(id)
+    }
+
+    pub fn alloc_list(&mut self, items: Vec<Value>) -> Value {
+        items.into_iter().rfold(Value::Nil, |acc, val| {
+            self.alloc_pair(val, acc)
+        })
+    }
+
+    pub fn fold_list<T, F>(&self, interp: &Interp, list: Value, init: T, mut func: F)  
+        -> Result<T, SchemeError> 
+        where 
+        F: FnMut(T, Value) -> Result<T, SchemeError>
+    {
+        let mut p = list;
+        let mut acc = init;
+        while let Some((car, cdr)) = p.is_pair(interp) { 
+            acc = func(acc, car)?;
+            p = cdr;
+        }
+        Ok(acc)
     }
 
     pub fn alloc_string(&mut self, s: impl Into<String>) -> Value {
@@ -283,6 +294,33 @@ impl SchemeObject for GcId {
         };
         
         match obj {
+            HeapObject::Pair(car, cdr) => {
+                if let Value::Object(func_id) = car 
+                    && let Some(keyword) = Keyword::from_id(func_id) {
+                        // Special form handling
+                    let args = interp.heap.borrow().fold_list(
+                        interp, 
+                        cdr,
+                        Vec::new(), 
+                        |mut acc, arg| {
+                            acc.push(arg);
+                            Ok(acc)
+                        });
+                        Keyword::eval(interp, env, keyword, &args?)
+                } else {
+                    // Fallback if not a special form.
+                    let args = interp.heap.borrow().fold_list(
+                        interp, 
+                        cdr,
+                        Vec::new(), 
+                        |mut acc, arg| {
+                            let value = arg.eval(interp, env)?;
+                            acc.push(value);
+                            Ok(acc)
+                        });
+                    car.eval(interp, env)?.apply(interp, env, args?)
+                }
+            },
             HeapObject::List(elements) => {
                 match elements.as_slice() {
                     [] => Ok(Value::Nil),
@@ -300,7 +338,7 @@ impl SchemeObject for GcId {
                         }
                     }    
                 }
-            }
+            },
             HeapObject::Symbol(name) => {
                 match env.borrow().lookup(id) {
                     Some(value) => return Ok(value),
@@ -325,6 +363,22 @@ impl SchemeObject for GcId {
         let heap = interp.heap.borrow();
         let obj = heap.get(id);
         match obj {
+            HeapObject::Pair(car, cdr) => {
+                let mut p = cdr.clone();
+                let mut items = vec![car.display(interp)];
+                loop {
+                    if let Some((cadr, cddr)) = p.is_pair(interp) { 
+                        items.push(cadr.display(interp));
+                        p = cddr;
+                    } else if p.is_nil() {
+                        break;
+                    } else {
+                        items.push(".".to_string());
+                        items.push(p.display(interp))
+                    }
+                }
+                format!("({})", items.join(" "))
+            },
             HeapObject::List(elements) => {
                 let elems_str: Vec<String> = elements.iter().map(|e| e.display(interp)).collect();
                 format!("({})", elems_str.join(" "))
