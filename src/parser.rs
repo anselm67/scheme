@@ -223,6 +223,7 @@ impl<R: Read> Parser<R> {
                 self.parse_symbol(interp)
             },
             Some(ch) if ch == b'#' => {
+                // TODO This should really be parse_hash()
                 self.parse_boolean()
             },
             Some(b'"') => {

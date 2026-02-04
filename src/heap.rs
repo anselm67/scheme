@@ -58,7 +58,7 @@ fn extract_param_ids(interp: &Interp, params: Value) -> Result<Vec<GcId>, Scheme
         interp, params, 
         Vec::new(), 
         |mut acc, param| {
-            acc.push(param.to_symbol(interp)?);
+            acc.push(interp.to_symbol(param)?);
             Ok(acc)
         }
     );
@@ -221,7 +221,7 @@ impl Heap {
     {
         let mut p = list;
         let mut acc = init;
-        while let Some((car, cdr)) = p.is_pair(interp) { 
+        while let Some((car, cdr)) = interp.is_pair(p) { 
             acc = func(acc, car)?;
             p = cdr;
         }
@@ -367,10 +367,10 @@ impl SchemeObject for GcId {
                 let mut p = cdr.clone();
                 let mut items = vec![car.display(interp)];
                 loop {
-                    if let Some((cadr, cddr)) = p.is_pair(interp) { 
+                    if let Some((cadr, cddr)) = interp.is_pair(p) { 
                         items.push(cadr.display(interp));
                         p = cddr;
-                    } else if p.is_nil() {
+                    } else if interp.is_nil(p) {
                         break;
                     } else {
                         items.push(".".to_string());

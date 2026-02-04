@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::heap::HeapObject;
 use crate::{all_of_type, extract_args, heap};
-use crate::types::{Number, SchemeError, SchemeObject, Value};
+use crate::types::{GcId, Number, SchemeError, SchemeObject, Value};
 
 pub struct Interp {
     pub heap: RefCell<heap::Heap>,
@@ -85,6 +85,85 @@ impl Interp {
         let output = obj.display(&self);
         println!("{}", output);
     }
+
+    pub fn is_nil(&self, value: Value) -> bool {
+        matches!(value, Value::Nil)
+    }
+
+    pub fn is_list(&self, value: Value) -> bool {
+        if let Some(id) = self.is_object(value) {
+            matches!(self.heap.borrow().get(id), HeapObject::Pair(..))
+        } else if matches!(value, Value::Nil) {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_null(&self, value: Value) -> bool {
+        matches!(value, Value::Nil)
+    }
+
+    pub fn is_integer(&self, value: Value) -> Option<Number> {
+        match value {
+            Value::Number(n @ Number::Int(_)) => Some(n),
+            _ => None
+        }
+    }
+
+    pub fn is_float(&self, value: Value) -> Option<Number> {
+        match value {
+            Value::Number(f @ Number::Float(_)) => Some(f),
+            _ => None
+        }
+    }
+
+    pub fn is_object(&self, value: Value) -> Option<GcId> {
+        match value {
+            Value::Object(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub fn to_object(&self, value: Value) -> Result<GcId, SchemeError> {
+        match value {
+            Value::Object(id) => Ok(id),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected an Object, got a {}", value.type_name()
+            ))),
+        }
+    }
+
+    pub fn is_pair(&self, value: Value) -> Option<(Value, Value)> {
+        if let Some(id) = self.is_object(value) {
+            match self.heap.borrow().get(id) {
+                HeapObject::Pair(car, cdr) => Some((*car, *cdr)),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn to_pair(&self, value: Value) -> Result<(Value, Value), SchemeError> {
+        let id = self.to_object(value)?;
+        match self.heap.borrow().get(id) {
+            HeapObject::Pair(car, cdr) => Ok((*car, *cdr)),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected a Pair, but got a {}.", value.type_name()))),
+        }
+    }
+
+    pub fn to_symbol(&self, value: Value) -> Result<GcId, SchemeError> {
+        let id = self.to_object(value)?;
+        match self.heap.borrow().get(id) {
+            HeapObject::Symbol(_) => Ok(id),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected a Symbol, but got a {}.", value.type_name()
+            )))
+        }
+    }
+
 }
 
 fn primitive_add(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
@@ -190,26 +269,20 @@ fn primitive_number_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeE
     }
 }
 
-fn primitive_integer_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_integer_p(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
     if args.is_empty() {
         return Err(SchemeError::ArgCountError(
             "integer? expects exactly one arg.".to_string()));
     }
-    match args[0] {
-        Value::Number(Number::Int(_)) => Ok(Value::Boolean(true)),
-        _ => Ok(Value::Boolean(false))
-    }
+    Ok(Value::Boolean(interp.is_integer(args[0]).is_some()))
 }
 
-fn primitive_float_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_float_p(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
     if args.is_empty() {
         return Err(SchemeError::ArgCountError(
             "float? expects exactly one arg.".to_string()));
     }
-    match args[0] {
-        Value::Number(Number::Float(_)) => Ok(Value::Boolean(true)),
-        _ => Ok(Value::Boolean(false))
-    }
+    Ok(Value::Boolean(interp.is_float(args[0]).is_some()))
 }
 
 fn primitive_number_max(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
@@ -250,25 +323,16 @@ fn primitive_list_p(interp: &Interp, args: &[Value]) -> Result<Value, SchemeErro
             "list? takes exactly one arg, but got {}.", args.len()
         )));
     }
-    match args[0] {
-        Value::Object(id) => {
-            let list = interp.heap.borrow().get(id).clone();
-            match list {
-                HeapObject::List(_) => Ok(Value::Boolean(true)),
-                _ => Ok(Value::Boolean(false))
-            }
-        },
-        _ => Ok(Value::Boolean(false))
-    }
+    Ok(Value::Boolean(interp.is_list(args[0])))
 }
 
-fn primitive_null_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_null_p(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
     if args.len() != 1 {
         Err(SchemeError::ArgCountError(format!(
             "list? expects one arg, but got {}", args.len()
         )))
     } else {
-        Ok(Value::Boolean(args[0] == Value::Nil))
+        Ok(Value::Boolean(interp.is_null(args[0])))
     }
 }
 
