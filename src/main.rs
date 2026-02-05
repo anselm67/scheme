@@ -2,7 +2,7 @@ use std::io::Write;
 use std::{io, process};
 
 use scheme::parser::Parser;
-use scheme::types::Value;
+use scheme::types::{Value};
 
 use scheme::interp::{Interp};
 
@@ -16,6 +16,7 @@ fn eval_expr(interp: &Interp, expr: Value) {
     }
 }
 
+#[allow(dead_code)]
 fn repl(interp: &Interp) {
     let input = io::stdin();
     let mut parser = Parser::new(input);
@@ -35,5 +36,9 @@ fn repl(interp: &Interp) {
 fn main() {
     let interp = Interp::new();
 
-    repl(&interp);
+    // repl(&interp);
+    match interp.load("src/scheme/sample.scm") {
+        Ok(_) => { },
+        Err(e) => eprintln!("Failed to load file {:?}", e)
+    }
 }

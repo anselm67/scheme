@@ -1,9 +1,11 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fs::File;
 use std::process;
 use std::rc::Rc;
 
 use crate::heap::HeapObject;
+use crate::parser::Parser;
 use crate::{all_of_type, check_arity, extract_args, heap};
 use crate::types::{DisplayWrapper, GcId, Number, SchemeError, SchemeObject, Value};
 
@@ -93,6 +95,7 @@ impl Interp {
         self.define_primitive("cdr", primitive_list_cdr);
 
         // Initialize system primitive functions.
+        self.define_primitive("debug", primitive_debug);
         self.define_primitive("quit", primitive_quit);
         self.define_primitive("exit", primitive_quit);
     }
@@ -209,6 +212,25 @@ impl Interp {
                 "Expected a Symbol, but got a {}.", value.type_name()
             )))
         }
+    }
+
+    pub fn load(&self, filename: &str) -> Result<Value, SchemeError> {
+        match File::open(filename) {
+            Ok(input) => {
+                let mut parser = Parser::new(input);
+                let mut retval = Value::Nil;
+                while let Ok(expr) = parser.read(self) {
+                    if matches!(expr, Value::Nil) {
+                        break;
+                    }
+                    retval = self.eval(expr)?;
+                }
+                Ok(retval)
+            },
+            Err(_) => Err(SchemeError::FileNotFound(format!(
+                    "Can't open file {}.", filename
+                )))
+            }
     }
 
 }
@@ -480,3 +502,13 @@ fn primitive_char_ci_gte(_interp: &Interp, args: &[Value]) -> Result<Value, Sche
     Ok(Value::Boolean(ch1.to_ascii_lowercase() >= ch2.to_ascii_lowercase()))
 }
 
+pub fn primitive_debug(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    for (i, arg) in args.iter().enumerate() {
+        if i > 0 {
+            print!(" ");
+        }
+        print!("{}", interp.display(*arg))
+    }
+    println!();
+    Ok(Value::Boolean(true))
+}
