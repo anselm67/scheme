@@ -60,6 +60,30 @@ impl Interp {
         self.define_primitive("max", primitive_number_max);
         self.define_primitive("min", primitive_number_min);
 
+
+        // Initialize character functions.
+        self.define_primitive("char?", primitive_char_p);
+        self.define_primitive("char-alphabetic?", primitive_char_alphabetic_p);
+        self.define_primitive("char-numeric?", primitive_char_numeric_p);
+        self.define_primitive("char-whitespace?", primitive_char_whitespace_p);
+        self.define_primitive("char-upper-case?", primitive_char_upper_case_p);
+        self.define_primitive("char-lower-case?", primitive_char_lower_case_p);
+        self.define_primitive("char->integer", primitive_char_to_integer);
+        self.define_primitive("integer->char", primitive_integer_to_char);
+        self.define_primitive("char-upcase", primitive_char_upcase);
+        self.define_primitive("char-downcase", primitive_char_downcase);
+        self.define_primitive("char=?", primitive_char_eq);
+        self.define_primitive("char<?", primitive_char_lt);
+        self.define_primitive("char<=?", primitive_char_lte);
+        self.define_primitive("char>?", primitive_char_gt);
+        self.define_primitive("char>=?", primitive_char_gte);
+        self.define_primitive("char-ci=?", primitive_char_ci_eq);
+        self.define_primitive("char-ci<?", primitive_char_ci_lt);
+        self.define_primitive("char-ci<=?", primitive_char_ci_lte);
+        self.define_primitive("char-ci>?", primitive_char_ci_gt);
+        self.define_primitive("char-ci>=?", primitive_char_ci_gte);
+
+
         // Initialize list functions.
         self.define_primitive("list", primitive_list);
         self.define_primitive("list?", primitive_list_p);
@@ -111,6 +135,15 @@ impl Interp {
         }
     }
 
+    pub fn as_integer(&self, value: Value) -> Result<i64, SchemeError> {
+        match value {
+            Value::Number(Number::Int(i)) => Ok(i),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected an Number::Int, but got a {}.", value.type_name()
+            )))
+        }
+    }
+
     pub fn is_float(&self, value: Value) -> Option<Number> {
         match value {
             Value::Number(f @ Number::Float(_)) => Some(f),
@@ -121,6 +154,13 @@ impl Interp {
     pub fn is_number(&self, value: Value) -> Option<Number> {
         match value {
             Value::Number(number) => Some(number),
+            _ => None,
+        }
+    }
+
+    pub fn is_char(&self, value: Value) -> Option<u8> {
+        match value {
+            Value::Char(ch) => Some(ch),
             _ => None,
         }
     }
@@ -338,3 +378,105 @@ fn primitive_list_cdr(interp: &Interp, args: &[Value]) -> Result<Value, SchemeEr
     let (_, cdr) = interp.to_pair(args[0])?;
     Ok(cdr)
 }
+
+fn primitive_char_p(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    check_arity!(args, 1);
+    Ok(Value::Boolean(interp.is_char(args[0]).is_some()))
+}
+
+fn primitive_char_alphabetic_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, ch: Char);
+    Ok(Value::Boolean((*ch as char).is_alphabetic()))
+}
+
+fn primitive_char_numeric_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, ch: Char);
+    Ok(Value::Boolean((*ch as char).is_digit(10)))
+}
+
+fn primitive_char_whitespace_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, ch: Char);
+    Ok(Value::Boolean(*ch == 9 || *ch == 10 || *ch == 32))
+}
+
+fn primitive_char_upper_case_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, ch: Char);
+    Ok(Value::Boolean((*ch as char).is_uppercase()))
+}
+
+fn primitive_char_lower_case_p(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, ch: Char);
+    Ok(Value::Boolean((*ch as char).is_lowercase()))
+}
+
+fn primitive_char_to_integer(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, ch: Char);
+    Ok(Value::Number(Number::Int(*ch as i64)))
+}
+
+fn primitive_integer_to_char(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    check_arity!(args, 1);
+    let byte = interp.as_integer(args[0])?;
+    Ok(Value::Char(byte as u8))
+}
+
+fn primitive_char_upcase(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, ch: Char);
+    Ok(Value::Char((*ch as char).to_ascii_uppercase() as u8))
+}
+
+fn primitive_char_downcase(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, ch: Char);
+    Ok(Value::Char((*ch as char).to_ascii_lowercase() as u8))
+}
+
+fn primitive_char_eq(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1 == ch2))
+}
+
+fn primitive_char_lt(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1 < ch2))
+}
+
+fn primitive_char_lte(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1 <= ch2))
+}
+
+fn primitive_char_gt(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1 > ch2))
+}
+
+fn primitive_char_gte(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1 >= ch2))
+}
+
+fn primitive_char_ci_eq(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1.to_ascii_lowercase() == ch2.to_ascii_lowercase()))
+}
+
+fn primitive_char_ci_lt(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1.to_ascii_lowercase() < ch2.to_ascii_lowercase()))
+}
+
+fn primitive_char_ci_lte(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1.to_ascii_lowercase() <= ch2.to_ascii_lowercase()))
+}
+
+fn primitive_char_ci_gt(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1.to_ascii_lowercase() > ch2.to_ascii_lowercase()))
+}
+
+fn primitive_char_ci_gte(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, ch1: Char, ch2: Char);
+    Ok(Value::Boolean(ch1.to_ascii_lowercase() >= ch2.to_ascii_lowercase()))
+}
+

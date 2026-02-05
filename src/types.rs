@@ -171,6 +171,7 @@ impl TryFrom<Number> for i32 {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
     Number(Number),
+    Char(u8),
     Boolean(bool),
     Object(GcId),
     Nil
@@ -181,6 +182,7 @@ impl Value {
     pub fn type_name(&self) -> &'static str {
         match self {
             Self::Number(_) => "Number",
+            Self::Char(_) => "Char",
             Self::Boolean(_) => "Boolean",
             Self::Object(_) => "Object",
             Self::Nil => "Nil",
@@ -210,6 +212,17 @@ impl SchemeObject for Value {
         match self {
             Value::Object(id) => id.display(interp),
             Value::Number(n) => n.to_string(),
+            Value::Char(ch) => {
+                let ch = *ch as char;
+                match ch {
+                    '\x08' => "#\\backspace".to_string(),
+                    '\t' => "#\\tab".to_string(),
+                    ' ' => "#\\space".to_string(),
+                    '\n' => "#\\newline".to_string(),
+                    '\r' => "#\\return".to_string(),
+                    any => format!("{}", any)
+                }
+            }
             Value::Boolean(true) => "#t".to_string(),
             Value::Boolean(false) => "#f".to_string(),
             Value::Nil => "()".to_string(),

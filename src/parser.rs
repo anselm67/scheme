@@ -5,7 +5,6 @@ use crate::heap::{Keyword};
 use crate::interp::Interp;
 use crate::types::{Number, SchemeError, Value};
 
-
 pub struct Parser<R: Read> {
     reader: Peekable<Bytes<BufReader<R>>>,
 }
@@ -134,21 +133,69 @@ impl<R: Read> Parser<R> {
         return self.parse_symbol_with_lead(interp, None)
     }
 
-    fn parse_boolean(&mut self) -> Result<Value, SchemeError> {
+    fn parse_hash_number(&mut self, radix: u32) -> Result<Value, SchemeError> {
+        let mut token = String::new();
+        while let Some(byte) = self.peek() {
+            let ch = byte as char;
+            if ch.is_digit(radix) {
+                self.next();
+                token.push(ch);
+            } else {
+                break;
+            }
+        }
+        match i64::from_str_radix(&token, radix) {
+            Ok(num) => Ok(Value::Number(Number::Int(num))),
+            Err(_) => Err(SchemeError::SyntaxError(format!(
+                "Invalid # number {token}."
+            )))
+        }
+    }
+
+    fn parse_hash_character(&mut self) -> Result<Value, SchemeError> {
+        let mut token = String::new();
+        while let Some(ch) = self.peek() {
+            let ch = ch as char;
+            if ch.is_ascii_alphabetic() {
+                self.next();
+                token.push(ch);
+            } else {
+                break;
+            }
+        }
+        if token.len() == 1 {
+            Ok(Value::Char(token.as_bytes()[0]))
+        } else {
+            match token.to_ascii_lowercase().as_str() {
+                "space" => Ok(Value::Char(32)),
+                "backspace" => Ok(Value::Char(8)),
+                "tab" => Ok(Value::Char(9)),
+                "newline" => Ok(Value::Char(10)),
+                "return" => Ok(Value::Char(13)),
+                _ => Err(SchemeError::SyntaxError(format!(
+                    "Invalid #\\ token {}.", token
+                )))
+            }
+        }
+    }
+
+    fn parse_hash(&mut self) -> Result<Value, SchemeError> {
         self.check_for(b'#')?;
-        let value;
         match self.next() {
-            Some(ch) if ch.to_ascii_lowercase() == b't' => value = true,
-            Some(ch) if ch.to_ascii_lowercase() == b'f' => value = false,
-            Some(ch) => return Err(SchemeError::SyntaxError(format!(
-                "Expected either of #t or #f, but got #{}", ch as char
+            Some(ch) if ch.to_ascii_lowercase() == b't' => Ok(Value::Boolean(true)),
+            Some(ch) if ch.to_ascii_lowercase() == b'f' => Ok(Value::Boolean(false)),
+            Some(ch) if ch == b'b' => self.parse_hash_number(2),
+            Some(ch) if ch == b'o' => self.parse_hash_number(8),
+            Some(ch) if ch == b'd' => self.parse_hash_number(10),
+            Some(ch) if ch == b'x' => self.parse_hash_number(16),
+            Some(ch) if ch == b'\\' => self.parse_hash_character(),
+            Some(ch) => Err(SchemeError::SyntaxError(format!(
+                "Invalid char in # sequence {}", ch as char
             ))),
-            None => return Err(SchemeError::SyntaxError(
+            None => Err(SchemeError::SyntaxError(
                 "Unexpected end of file while parsing a # expression.".to_string()
             ))
-        };
-        // self.next();
-        return Ok(Value::Boolean(value))
+        }
     }
 
     fn parse_string(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
@@ -224,7 +271,7 @@ impl<R: Read> Parser<R> {
             },
             Some(ch) if ch == b'#' => {
                 // TODO This should really be parse_hash()
-                self.parse_boolean()
+                self.parse_hash()
             },
             Some(b'"') => {
                 return self.parse_string(interp)
@@ -275,16 +322,27 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_boolean() {
+    fn test_parse_hash() {
         let ok_inputs = vec![
             ("#t", Value::Boolean(true)),
             ("#f", Value::Boolean(false)),
             ("#T", Value::Boolean(true)),
-            ("#F", Value::Boolean(false))
+            ("#F", Value::Boolean(false)),
+            ("#d10", Value::Number(Number::Int(10))),
+            ("#b101", Value::Number(Number::Int(5))),
+            ("#o10", Value::Number(Number::Int(8))),
+            ("#xFF", Value::Number(Number::Int(255))),
+            ("#\\backspace", Value::Char(8)),
+            ("#\\tab", Value::Char(9)),
+            ("#\\newline", Value::Char(10)),
+            ("#\\return", Value::Char(13)),
+            ("#\\space", Value::Char(32)),
+            ("#\\A", Value::Char(65)),
+
         ];
         for (text, value) in ok_inputs {
             let mut parser = Parser::new(text.as_bytes());
-            assert_eq!(Ok(value), parser.parse_boolean())
+            assert_eq!(Ok(value), parser.parse_hash())
         }
     }
 

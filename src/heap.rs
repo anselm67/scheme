@@ -295,9 +295,6 @@ impl SchemeObject for GcId {
         
         match obj {
             HeapObject::Pair(car, cdr) => {
-                // TODO Both special forms and function calls should be passed the *list* of 
-                // arguments. They should be converted to &[Value] later only when needed.
-                // So that (car ...) don't have to make a copy of the list into an array.
                 if let Value::Object(func_id) = car 
                     && let Some(keyword) = Keyword::from_id(func_id) {
                     // Special form handling

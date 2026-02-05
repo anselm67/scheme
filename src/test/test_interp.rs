@@ -10,6 +10,22 @@ fn eval_expr(interp: &Interp, expr: Value) {
     }
 }
 
+fn check_exprs(interp: &Interp, inputs: &Vec<(&str, Value)>) {
+    for (text, expected) in inputs {
+    let mut parser = Parser::new(text.as_bytes());
+    let expr = parser.read(&interp);
+    match expr {
+        Ok(expr) => {
+            match interp.eval(expr) {
+                Ok(value) => assert_eq!(value, *expected),
+                Err(e) => panic!("Eval {} failed with error: {:?}", text, e)
+            }
+        },
+        Err(e) => panic!("Parse {} failed, error: {:?}.", text, e)
+    }
+}
+
+}
 #[test]
 fn test_cond() {
     let interp = Interp::new();
@@ -85,12 +101,8 @@ fn test_setbang_special_form() {
 }
 
 #[test]
-fn test_read_eval_some() {
+fn test_read_eval_number() {
     let inputs = vec![
-        ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
-        ("((lambda (x y) (+ x y)) 1 2)", Value::Number(Number::Int(3))),
-
-        // Some number test.
         ("(* 3 2)", Value::Number(Number::Int(6))),
         ("(- 1)",  Value::Number(Number::Int(-1))),
         ("(- 2 1)",  Value::Number(Number::Int(1))),
@@ -110,22 +122,59 @@ fn test_read_eval_some() {
         ("(float? 1)",  Value::Boolean(false)),
         ("(max 4 2.0 1)",  Value::Number(Number::Int(4))),
         ("(min 4 2.0 7)",  Value::Number(Number::Float(2.0))),
-
-        // Some list tests.
     ];
     let interp = Interp::new();
-    for (text, expected) in inputs {
-        let mut parser = Parser::new(text.as_bytes());
-        let expr = parser.read(&interp);
-        match expr {
-            Ok(expr) => {
-                match interp.eval(expr) {
-                    Ok(value) => assert_eq!(value, expected),
-                    Err(e) => panic!("Eval {} failed with error: {:?}", text, e)
-                }
-            },
-            Err(e) => panic!("Parse {} failed, error: {:?}.", text, e)
-        }
-    }
+    check_exprs(&interp, &inputs);
+}
+
+
+#[test]
+fn test_read_eval_closure() {
+    let inputs = vec![
+        ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
+        ("((lambda (x y) (+ x y)) 1 2)", Value::Number(Number::Int(3))),
+    ];
+    let interp = Interp::new();
+    check_exprs(&interp, &inputs);
+}
+
+
+#[test]
+fn test_read_eval_list() {
+    let inputs = vec![
+        ("(list? '(1 2))", Value::Boolean(true)),
+        ("(list? \"hello\")", Value::Boolean(false)),
+        ("(null? '(1 2))')", Value::Boolean(false)),
+        ("(null? ())", Value::Boolean(true)),
+        ("(car '(1 2))", Value::Number(Number::Int(1))),
+        ("(car (cdr '(1 2)))", Value::Number(Number::Int(2))),
+    ];
+    let interp = Interp::new();
+    check_exprs(&interp, &inputs);
+}
+
+
+#[test]
+fn test_read_eval_char() {
+    let inputs = vec![
+        ("(char? #\\A)", Value::Boolean(true)),
+        ("(char? 10)", Value::Boolean(false)),
+        ("(char->integer #\\A)", Value::Number(Number::Int(65))),
+        ("(char->integer #\\A)", Value::Number(Number::Int(65))),
+        ("(integer->char 65)", Value::Char(65)),
+        ("(char=? #\\a #\\a)", Value::Boolean(true)),
+        ("(char=? #\\b #\\a)", Value::Boolean(false)),
+        ("(char>? #\\a #\\b)", Value::Boolean(false)),
+        ("(char<? #\\a #\\b)", Value::Boolean(true)),
+        ("(char>=? #\\a #\\a)", Value::Boolean(true)),
+        ("(char<=? #\\a #\\a)", Value::Boolean(true)),
+        ("(char-ci=? #\\B #\\a)", Value::Boolean(false)),
+        ("(char-ci>? #\\A #\\b)", Value::Boolean(false)),
+        ("(char-ci<? #\\A #\\b)", Value::Boolean(true)),
+        ("(char-ci>=? #\\A #\\a)", Value::Boolean(true)),
+        ("(char-ci<=? #\\A #\\a)", Value::Boolean(true)),
+    ];
+    let interp = Interp::new();
+    check_exprs(&interp, &inputs);
 }
 
