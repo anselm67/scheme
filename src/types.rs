@@ -19,7 +19,7 @@ pub enum SchemeError {
 pub trait SchemeObject {
     fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError>;
     fn is_false(&self) -> bool;
-    fn display(&self, interp: &Interp) -> String;
+    fn write_to(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -190,6 +190,17 @@ impl Value {
     }
 }
 
+pub struct DisplayWrapper<'a> {
+    pub obj: &'a Value,
+    pub interp: &'a Interp,
+}
+
+impl<'a> std::fmt::Display for DisplayWrapper<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.obj.write_to(self.interp, f)
+    }
+}
+
 impl SchemeObject for Value {
 
     fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError> {
@@ -208,24 +219,24 @@ impl SchemeObject for Value {
         }
     }
 
-    fn display(&self, interp: &Interp) -> String {
+    fn write_to(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Object(id) => id.display(interp),
-            Value::Number(n) => n.to_string(),
+            Value::Object(id) => id.write_to(interp, f),
+            Value::Number(n) => write!(f, "{}", n),
             Value::Char(ch) => {
                 let ch = *ch as char;
                 match ch {
-                    '\x08' => "#\\backspace".to_string(),
-                    '\t' => "#\\tab".to_string(),
-                    ' ' => "#\\space".to_string(),
-                    '\n' => "#\\newline".to_string(),
-                    '\r' => "#\\return".to_string(),
-                    any => format!("{}", any)
+                    '\x08' => write!(f, "#\\backspace"),
+                    '\t' => write!(f, "#\\tab"),
+                    ' ' => write!(f, "#\\space"),
+                    '\n' => write!(f, "#\\newline"),
+                    '\r' => write!(f, "#\\return"),
+                    any => write!(f, "{}", any)
                 }
             }
-            Value::Boolean(true) => "#t".to_string(),
-            Value::Boolean(false) => "#f".to_string(),
-            Value::Nil => "()".to_string(),
+            Value::Boolean(true) => write!(f, "#t"),
+            Value::Boolean(false) => write!(f, "#f"),
+            Value::Nil => write!(f, "()"),
         }
     }
 

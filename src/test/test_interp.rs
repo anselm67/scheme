@@ -5,7 +5,7 @@ fn eval_expr(interp: &Interp, expr: Value) {
     interp.display(expr);
     let result = interp.eval(expr);
     match result {
-        Ok(val) => interp.display(val),
+        Ok(val) => println!("{}", interp.display(val)),
         Err(e) => eprintln!("Error: {:?}", e),
     }
 }

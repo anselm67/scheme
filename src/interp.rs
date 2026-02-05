@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::heap::HeapObject;
 use crate::{all_of_type, check_arity, extract_args, heap};
-use crate::types::{GcId, Number, SchemeError, SchemeObject, Value};
+use crate::types::{DisplayWrapper, GcId, Number, SchemeError, SchemeObject, Value};
 
 pub struct Interp {
     pub heap: RefCell<heap::Heap>,
@@ -105,9 +105,9 @@ impl Interp {
         obj.eval(self, &self.env) 
     }
 
-    pub fn display(&self, obj: Value) {
-        let output = obj.display(&self);
-        println!("{}", output);
+    pub fn display(&self, obj: Value) -> String {
+        let wrapper = DisplayWrapper{ obj: &obj, interp: self };
+        wrapper.to_string()
     }
 
     pub fn is_nil(&self, value: Value) -> bool {

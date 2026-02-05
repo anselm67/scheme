@@ -10,8 +10,7 @@ fn eval_expr(interp: &Interp, expr: Value) {
     let result = interp.eval(expr);
     match result {
         Ok(val) => {
-            print!(" = ");
-            interp.display(val)
+            println!(" = {}", interp.display(val));
         },
         Err(e) => eprintln!("Error: {:?}", e),
     }

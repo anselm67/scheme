@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 use crate::{
     env::Env, interp::Interp, types::{GcId, SchemeError, SchemeObject, Value}
@@ -358,36 +358,44 @@ impl SchemeObject for GcId {
         return *self == Keyword::False as usize;
     }
     
-    fn display(&self, interp: &Interp) -> String {
+    fn write_to(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let id = *self;
         let heap = interp.heap.borrow();
         let obj = heap.get(id);
         match obj {
             HeapObject::Pair(car, cdr) => {
                 let mut p = cdr.clone();
-                let mut items = vec![car.display(interp)];
+                write!(f, "(")?;
+                car.write_to(interp, f)?;
                 loop {
                     if let Some((cadr, cddr)) = interp.is_pair(p) { 
-                        items.push(cadr.display(interp));
+                        write!(f, " ")?;
+                        cadr.write_to(interp, f)?;
                         p = cddr;
                     } else if interp.is_nil(p) {
                         break;
                     } else {
-                        items.push(".".to_string());
-                        items.push(p.display(interp))
+                        write!(f, " . ")?;
+                        p.write_to(interp, f)?;
                     }
                 }
-                format!("({})", items.join(" "))
+                write!(f, ")")
             },
             HeapObject::List(elements) => {
-                let elems_str: Vec<String> = elements.iter().map(|e| e.display(interp)).collect();
-                format!("({})", elems_str.join(" "))
+                write!(f, "(")?;
+                for (i, e) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?; // Add a space before every element EXCEPT the first
+                    }
+                    e.write_to(interp, f)?;
+                }
+                write!(f, ")")
             },
-            HeapObject::Symbol(s) => format!("{}", s),
-            HeapObject::String(s) => format!("\"{}\"", s),
-            HeapObject::Primitive(pr) => format!("<primitive {:p}>", pr),
-            HeapObject::Closure(_) => format!("<closure {}>", id),
-            HeapObject::FreeSlot(_) => format!("*** FREE SLOT ***")
+            HeapObject::Symbol(s) => write!(f, "{}", s),
+            HeapObject::String(s) => write!(f, "\"{}\"", s),
+            HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
+            HeapObject::Closure(_) => write!(f, "<closure {}>", id),
+            HeapObject::FreeSlot(_) => write!(f, "*** FREE SLOT ***")
         }
     }
 }

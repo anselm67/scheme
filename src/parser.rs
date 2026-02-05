@@ -270,7 +270,6 @@ impl<R: Read> Parser<R> {
                 self.parse_symbol(interp)
             },
             Some(ch) if ch == b'#' => {
-                // TODO This should really be parse_hash()
                 self.parse_hash()
             },
             Some(b'"') => {
@@ -298,8 +297,6 @@ impl<R: Read> Parser<R> {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::SchemeObject;
-
     use super::*;
 
     #[test]
@@ -383,7 +380,7 @@ mod tests {
             let mut parser = Parser::new(text.as_bytes());
             let result = parser.parse_list(&interp);
             if let Ok(list) = result {
-                println!("{}", list.display(&interp))
+                println!("{}", interp.display(list))
             }
         }
     }
