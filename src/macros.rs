@@ -1,5 +1,16 @@
 
 #[macro_export]
+macro_rules! check_arity {
+    ($args:expr, $count: expr) => {
+        if $args.len() != $count {
+            return Err(SchemeError::ArgCountError(format!(
+                "Expected {} args, but got {}.", $count, $args.len()
+            )))
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! extract_args {
     ($args:expr, $count:expr, $($name:ident : $variant:ident),*) => {
         if $args.len() != $count {

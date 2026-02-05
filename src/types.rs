@@ -1,6 +1,6 @@
 use std::{cell::RefCell, cmp::Ordering, convert::TryFrom, fmt, rc::Rc};
 
-use crate::{env::Env, heap::HeapObject, interp::Interp};
+use crate::{env::Env, interp::Interp};
 
 pub type GcId = usize;
 
