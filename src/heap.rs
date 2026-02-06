@@ -23,6 +23,7 @@ pub enum HeapObject {
     String(String),
     Primitive(PrimitiveFn),
     Closure(Box<Closure>),
+    NaryClosure(Box<Closure>)
     // Other heap-allocated object types can be added here
 }
 
@@ -37,6 +38,7 @@ impl HeapObject {
             Self::String(_) => "String",
             Self::Primitive(_) => "Primitive",
             Self::Closure(_) => "Closure",
+            Self::NaryClosure(_) => "n-Closure",
         }
     }
 }
@@ -53,16 +55,23 @@ pub enum Keyword {
     SetBang = 6,
 }
 
-fn extract_param_ids(interp: &Interp, params: Value) -> Result<Vec<GcId>, SchemeError> {
-    let ids = interp.heap.borrow().fold_list(
-        interp, params, 
-        Vec::new(), 
-        |mut acc, param| {
-            acc.push(interp.to_symbol(param)?);
-            Ok(acc)
+fn extract_param_ids(interp: &Interp, params: Value) -> Result<(Vec<GcId>, bool), SchemeError> {
+    let mut ids = Vec::new();
+    let mut p = params;
+    let mut is_nary = false;
+
+    while let Some((car, cdr)) = interp.is_pair(p) { 
+        ids.push(interp.to_symbol(car)?);
+        if interp.is_nil(cdr) {
+            break;
+        } else if interp.is_pair(cdr).is_some() {
+            p = cdr;
+        } else {
+            is_nary = true;
+            ids.push(interp.to_symbol(cdr)?);
         }
-    );
-    ids
+    }
+    Ok((ids, is_nary))
 }
 
 
@@ -110,14 +119,21 @@ impl Keyword {
             Keyword::Lambda => {
                 match args {
                     [params_value, body @ ..] => {
-                        let params = extract_param_ids(interp, *params_value)?;
+                        let (params, is_nary) = extract_param_ids(interp, *params_value)?;
                         let mut heap = interp.heap.borrow_mut();
-                        let closure = heap.alloc_closure(Closure {
-                            params: params.into_boxed_slice(),
-                            body: body.to_vec().into_boxed_slice(),
-                            env: Rc::clone(&interp.env),
-                        });
-                        Ok(closure) 
+                        if is_nary {
+                            Ok(heap.alloc_nary_closure(Closure {
+                                params: params.into_boxed_slice(),
+                                body: body.to_vec().into_boxed_slice(),
+                                env: Rc::clone(&interp.env),
+                            }))
+                        } else {
+                            Ok(heap.alloc_closure(Closure {
+                                params: params.into_boxed_slice(),
+                                body: body.to_vec().into_boxed_slice(),
+                                env: Rc::clone(&interp.env),
+                            }))
+                        }
                     },
                     _ => Err(SchemeError::EvalError("lambda expects at least 2 arguments".to_string())),
                 }
@@ -187,6 +203,10 @@ impl Heap {
         &self.objects[id]
     }
 
+    fn get_mut(&mut self, id: GcId) -> &mut HeapObject {
+        &mut self.objects[id]
+    }
+
     fn intern_symbol_to_gcid(&mut self, name: &str) -> GcId {
         if let Some(&id) = self.symbols.get(name) {
             return id;
@@ -208,24 +228,41 @@ impl Heap {
         Value::Object(id)
     }
 
-    pub fn alloc_list(&mut self, items: Vec<Value>) -> Value {
-        items.into_iter().rfold(Value::Nil, |acc, val| {
-            self.alloc_pair(val, acc)
-        })
+    pub fn last(&self, car: Value) -> Result<Value, SchemeError> {
+        let mut tail = car;
+        while let Value::Object(id) = car {
+            match self.get(id) {
+                HeapObject::Pair(_, cdr) => {
+                    if matches!(cdr, Value::Nil) {
+                        return Ok(tail);
+                    } else {
+                        tail = *cdr;
+                    }
+                },
+                _ => break
+            }
+        } 
+        return Err(SchemeError::TypeError(format!(
+                "Expected a Pair, but got a {}.", car.type_name()
+            )));
     }
 
-    pub fn fold_list<T, F>(&self, interp: &Interp, list: Value, init: T, mut func: F)  
-        -> Result<T, SchemeError> 
-        where 
-        F: FnMut(T, Value) -> Result<T, SchemeError>
-    {
-        let mut p = list;
-        let mut acc = init;
-        while let Some((car, cdr)) = interp.is_pair(p) { 
-            acc = func(acc, car)?;
-            p = cdr;
+    pub fn setcdr(&mut self, id: GcId, value: Value) -> Result<Value, SchemeError> {
+        match self.get_mut(id) {
+            HeapObject::Pair(_, cdr) => {
+                *cdr = value;
+                Ok(value)
+            },
+            obj => Err(SchemeError::TypeError(format!(
+                "Expected a Pair, but got a {} instead.", obj.type_name()
+            )))
         }
-        Ok(acc)
+    }
+
+    pub fn alloc_list(&mut self, items: &[Value]) -> Value {
+        items.into_iter().rfold(Value::Nil, |acc, val| {
+            self.alloc_pair(*val, acc)
+        })
     }
 
     pub fn alloc_string(&mut self, s: impl Into<String>) -> Value {
@@ -246,13 +283,22 @@ impl Heap {
         Value::Object(id)
     }
 
+    pub fn alloc_nary_closure(&mut self, closure: Closure) -> Value {
+        let id: GcId = self.objects.len();
+        self.objects.push(HeapObject::NaryClosure(Box::new(closure)));
+        Value::Object(id)
+    }
+
 }
 pub trait Apply {
-    fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) -> Result<Value, SchemeError>;
+    fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) 
+        -> Result<Value, SchemeError>;
 }
 
 impl Apply for Value {
-    fn apply(&self, interp: &Interp, _env: &Rc<RefCell<Env>>, args: Vec<Value>) -> Result<Value, SchemeError> {
+    fn apply(&self, interp: &Interp, _env: &Rc<RefCell<Env>>, args: Vec<Value>) 
+        -> Result<Value, SchemeError> 
+    {
         let obj = {
             let heap = interp.heap.borrow();
             match self {
@@ -270,6 +316,21 @@ impl Apply for Value {
                 for (param_id, arg_value) in closure.params.iter().zip(args.iter()) {
                     new_env.borrow_mut().define(*param_id, *arg_value);
                 }
+                let mut result = Value::Nil;
+                for expr in &closure.body {
+                    result = expr.eval(interp, &new_env)?;
+                }
+                Ok(result)
+            },
+            HeapObject::NaryClosure(closure) => {
+                let new_env = Env::extend(closure.env.clone());
+                let mut index = 0;
+                while index < closure.params.len() - 1 {
+                    new_env.borrow_mut().define(closure.params[index], args[index]);
+                    index += 1;
+                }
+                let rest = interp.heap.borrow_mut().alloc_list(&args[index..]);
+                new_env.borrow_mut().define(closure.params[index], rest);
                 let mut result = Value::Nil;
                 for expr in &closure.body {
                     result = expr.eval(interp, &new_env)?;
@@ -297,9 +358,8 @@ impl SchemeObject for GcId {
             HeapObject::Pair(car, cdr) => {
                 if let Value::Object(func_id) = car 
                     && let Some(keyword) = Keyword::from_id(func_id) {
-                    // Special form handling
-                    let args = interp.heap.borrow().fold_list(
-                        interp, 
+                    // Special form handling - no args eval.
+                    let args = interp.fold_list(
                         cdr,
                         Vec::new(), 
                         |mut acc, arg| {
@@ -308,9 +368,8 @@ impl SchemeObject for GcId {
                         });
                         Keyword::eval(interp, env, keyword, &args?)
                 } else {
-                    // Fallback if not a special form.
-                    let args = interp.heap.borrow().fold_list(
-                        interp, 
+                    // Regular function call with arg eval.
+                    let args = interp.fold_list(
                         cdr,
                         Vec::new(), 
                         |mut acc, arg| {
@@ -376,7 +435,8 @@ impl SchemeObject for GcId {
                         break;
                     } else {
                         write!(f, " . ")?;
-                        p.write_to(interp, f)?;
+                        cdr.write_to(interp, f)?;
+                        break;
                     }
                 }
                 write!(f, ")")
@@ -395,6 +455,7 @@ impl SchemeObject for GcId {
             HeapObject::String(s) => write!(f, "\"{}\"", s),
             HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
+            HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
             HeapObject::FreeSlot(_) => write!(f, "*** FREE SLOT ***")
         }
     }

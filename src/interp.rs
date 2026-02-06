@@ -88,6 +88,7 @@ impl Interp {
 
         // Initialize list functions.
         self.define_primitive("list", primitive_list);
+        self.define_primitive("length", primitive_length);
         self.define_primitive("list?", primitive_list_p);
         self.define_primitive("null?", primitive_null_p);
         self.define_primitive("cons", primitive_list_cons);
@@ -100,6 +101,21 @@ impl Interp {
         self.define_primitive("quit", primitive_quit);
         self.define_primitive("exit", primitive_quit);
     }
+
+    pub fn fold_list<T, F>(&self, list: Value, init: T, mut func: F)  
+        -> Result<T, SchemeError> 
+        where 
+        F: FnMut(T, Value) -> Result<T, SchemeError>
+    {
+        let mut p = list;
+        let mut acc = init;
+        while let Some((car, cdr)) = self.is_pair(p) { 
+            acc = func(acc, car)?;
+            p = cdr;
+        }
+        Ok(acc)
+    }
+
 
     pub fn lookup(&self, name: &str) -> Value {
         self.heap.borrow_mut().intern_symbol(name)
@@ -397,8 +413,22 @@ fn primitive_list(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError>
     if args.is_empty() {
         Ok(Value::Nil)
     } else {
-        Ok(interp.heap.borrow_mut().alloc_list(args[1..].to_vec()))
+        Ok(interp.heap.borrow_mut().alloc_list(args))
     }
+}
+
+fn primitive_length(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    check_arity!(args, 1);
+    let mut length = 0;
+    if ! matches!(args[0], Value::Nil) {
+        let (_, mut cdr) = interp.to_pair(args[0])?;
+        loop {
+            length += 1;
+            if matches!(cdr, Value::Nil) { break; }
+            (_, cdr) = interp.to_pair(cdr)?;
+        }
+    }
+    Ok(Value::Number(Number::Int(length)))
 }
 
 fn primitive_list_p(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
@@ -413,7 +443,8 @@ fn primitive_null_p(interp: &Interp, args: &[Value]) -> Result<Value, SchemeErro
 
 fn primitive_list_cons(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
     check_arity!(args, 2);
-    Ok(interp.heap.borrow_mut().alloc_pair(args[0], args[1]))
+    let mut heap = interp.heap.borrow_mut();
+    Ok(heap.alloc_pair(args[0], args[1]))
 }
 
 fn primitive_list_car(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {

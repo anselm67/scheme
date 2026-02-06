@@ -35,14 +35,14 @@ fn test_cond() {
 
     let mut heap = interp.heap.borrow_mut();
 
-    let cond_expr_true = heap.alloc_list(vec![
+    let cond_expr_true = heap.alloc_list(&[
         cond,
         tru,
         Value::Number(Number::Int(42)),
         Value::Number(Number::Int(0)),
     ]);
 
-    let cond_expr_false = heap.alloc_list(vec![
+    let cond_expr_false = heap.alloc_list(&[
         cond,
         fls,
         Value::Number(Number::Int(42)),
@@ -62,13 +62,13 @@ fn test_nested_expr() {
     let mul = interp.lookup("*");
     let mut heap = interp.heap.borrow_mut();
 
-    let expr= heap.alloc_list(vec![
+    let expr= heap.alloc_list(&[
         mul,
         Value::Number(Number::Int(2)),
         Value::Number(Number::Int(3)),
     ]);
 
-    let list: Value = heap.alloc_list(vec![
+    let list: Value = heap.alloc_list(&[
         add,
         expr,
         Value::Number(Number::Int(1)),
@@ -89,7 +89,7 @@ fn test_setbang_special_form() {
 
     let mut heap = interp.heap.borrow_mut();
 
-    let expr= heap.alloc_list(vec![
+    let expr= heap.alloc_list(&[
         define,
         x,
         Value::Number(Number::Int(1))
@@ -131,6 +131,8 @@ fn test_read_eval_number() {
 #[test]
 fn test_read_eval_closure() {
     let inputs = vec![
+        ("((lambda (x . y) (length y)) 1 2)", Value::Number(Number::Int(2))),
+        ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
         ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
         ("((lambda (x y) (+ x y)) 1 2)", Value::Number(Number::Int(3))),
     ];
@@ -143,11 +145,15 @@ fn test_read_eval_closure() {
 fn test_read_eval_list() {
     let inputs = vec![
         ("(list? '(1 2))", Value::Boolean(true)),
+        ("(length '(1 2))", Value::Number(Number::Int(2))),
+        ("(length ())", Value::Number(Number::Int(0))),
         ("(list? \"hello\")", Value::Boolean(false)),
         ("(null? '(1 2))')", Value::Boolean(false)),
         ("(null? ())", Value::Boolean(true)),
         ("(car '(1 2))", Value::Number(Number::Int(1))),
         ("(car (cdr '(1 2)))", Value::Number(Number::Int(2))),
+        ("(car '(1 . 2))", Value::Number(Number::Int(1))),
+        ("(cdr '(1 . 2))", Value::Number(Number::Int(2))),
     ];
     let interp = Interp::new();
     check_exprs(&interp, &inputs);

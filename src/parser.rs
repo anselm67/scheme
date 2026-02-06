@@ -226,12 +226,25 @@ impl<R: Read> Parser<R> {
         let mut items = Vec::new();
         self.skip_whitespace();
         while let Some(c) = self.peek() {
-            if c == b')' { break; }
-            items.push(self.read(interp)?);
-            self.skip_whitespace();
+            match c {
+                b')' => break,
+                b'.' => {
+                    let mut heap = interp.heap.borrow_mut();
+                    self.next();
+                    let car = heap.alloc_list(&items);
+                    let cdr = self.read(interp)?;
+                    let tail = heap.last(car)?;
+                    heap.setcdr(interp.to_object(tail)?, cdr)?;
+                    return Ok(car);
+                },
+                _ => {
+                    items.push(self.read(interp)?);
+                    self.skip_whitespace();
+                }
+            }
         }
         self.check_for(b')')?;
-        return Ok(interp.heap.borrow_mut().alloc_list(items));
+        return Ok(interp.heap.borrow_mut().alloc_list(&items));
     }
 
     // fn parse_vector(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
@@ -278,7 +291,7 @@ impl<R: Read> Parser<R> {
             Some(ch) if ch == b'\'' => {
                 self.next();
                 let quoted = self.read(interp)?;
-                let value = vec![
+                let value = &[
                     Value::Object(Keyword::Quote as usize), 
                     quoted,
                 ];
@@ -373,6 +386,7 @@ mod tests {
     fn test_parse_list() {
         let interp = Interp::new();
         let inputs = vec![
+            "'(1 . 2)",
             ")",
             "1 2 3)"
         ];
