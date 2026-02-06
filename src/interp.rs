@@ -88,6 +88,7 @@ impl Interp {
 
         // Initialize list functions.
         self.define_primitive("list", primitive_list);
+        self.define_primitive("append", primitive_append);
         self.define_primitive("length", primitive_length);
         self.define_primitive("list?", primitive_list_p);
         self.define_primitive("null?", primitive_null_p);
@@ -415,6 +416,42 @@ fn primitive_list(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError>
     } else {
         Ok(interp.heap.borrow_mut().alloc_list(args))
     }
+}
+
+fn primitive_append(interp: &Interp, args: &[Value])-> Result<Value, SchemeError> {
+    let mut retval = Value::Nil;
+    let mut prev_cdr = Value::Nil;
+    for (i, arg) in args.iter().enumerate() {
+        if i == args.len() - 1 {
+            if matches!(prev_cdr, Value::Nil) {
+                retval = *arg; 
+            } else {
+                debug_assert!(matches!(retval, Value::Object(_)));
+                let mut heap = interp.heap.borrow_mut();
+                heap.setcdr(interp.to_object(prev_cdr)?, *arg)?;
+            }
+        } else {
+            let mut p = *arg;
+            while let Ok((car, cdr)) = interp.to_pair(p) {
+                let mut heap = interp.heap.borrow_mut();
+                if matches!(retval, Value::Nil) {
+                    retval = heap.alloc_pair(car, Value::Nil);
+                    prev_cdr = retval;
+                } else {
+                    let next = heap.alloc_pair(car, Value::Nil);
+                    heap.setcdr(interp.to_object(prev_cdr)?, next)?;
+                    prev_cdr = next;
+                }
+                p = cdr;
+            }
+            if ! matches!(p, Value::Nil) {
+                return Err(SchemeError::TypeError(format!(
+                    "Expected Nil, got a {}.", p.type_name()
+                )))
+            }
+        }
+    }
+    Ok(retval)
 }
 
 fn primitive_length(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {

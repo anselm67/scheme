@@ -145,6 +145,7 @@ fn test_read_eval_closure() {
 fn test_read_eval_list() {
     let inputs = vec![
         ("(list? '(1 2))", Value::Boolean(true)),
+        ("(append)", Value::Nil),
         ("(length '(1 2))", Value::Number(Number::Int(2))),
         ("(length ())", Value::Number(Number::Int(0))),
         ("(list? \"hello\")", Value::Boolean(false)),

@@ -379,7 +379,6 @@ impl SchemeObject for GcId {
                             Ok(acc)
                         });
                     let func = car.eval(interp, env)?;
-                    println!("func: {}", interp.display(func));
                     func.apply(interp, env, args?)
                 }
             },
@@ -438,7 +437,7 @@ impl SchemeObject for GcId {
                         break;
                     } else {
                         write!(f, " . ")?;
-                        cdr.write_to(interp, f)?;
+                        p.write_to(interp, f)?;
                         break;
                     }
                 }
