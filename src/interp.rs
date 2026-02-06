@@ -4,7 +4,7 @@ use std::fs::File;
 use std::process;
 use std::rc::Rc;
 
-use crate::heap::HeapObject;
+use crate::heap::{HeapObject, Keyword};
 use crate::parser::Parser;
 use crate::{all_of_type, check_arity, extract_args, heap};
 use crate::types::{DisplayWrapper, GcId, Number, SchemeError, SchemeObject, Value};
@@ -43,6 +43,7 @@ impl Interp {
     }
 
     fn init(&self) {
+        self.define_primitive("eval", primitive_eval);
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
         // Initialize math primitive functions
@@ -258,6 +259,14 @@ impl Interp {
         }
     }
 
+    pub fn quote(&self, to_quote: Value) -> Result<Value, SchemeError> {
+        let value = &[
+            Value::Object(Keyword::Quote as usize), 
+            to_quote,
+        ];
+        Ok(self.heap.borrow_mut().alloc_list(value))
+    }
+
     pub fn load(&self, filename: &str) -> Result<Value, SchemeError> {
         match File::open(filename) {
             Ok(input) => {
@@ -277,6 +286,11 @@ impl Interp {
             }
     }
 
+}
+
+fn primitive_eval(interp: &Interp, args: &[Value])  -> Result<Value, SchemeError> {
+    check_arity!(args, 1);
+    interp.eval(args[0])
 }
 
 fn primitive_add(_interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {

@@ -231,7 +231,7 @@ impl Heap {
 
     pub fn last(&self, car: Value) -> Result<Value, SchemeError> {
         let mut tail = car;
-        while let Value::Object(id) = car {
+        while let Value::Object(id) = tail {
             match self.get(id) {
                 HeapObject::Pair(_, cdr) => {
                     if matches!(cdr, Value::Nil) {
@@ -326,6 +326,11 @@ impl Apply for Value {
             HeapObject::NaryClosure(closure) => {
                 let new_env = Env::extend(closure.env.clone());
                 let mut index = 0;
+                if args.len() < closure.params.len() - 1 {
+                    return Err(SchemeError::ArgCountError(format!(
+                        "Expected at least {} args, but got {}.", closure.params.len() - 1, args.len()
+                    )))
+                }
                 while index < closure.params.len() - 1 {
                     new_env.borrow_mut().define(closure.params[index], args[index]);
                     index += 1;

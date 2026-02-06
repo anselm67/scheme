@@ -8,7 +8,8 @@ fn test_parse_some_exprs() {
     let inputs = vec![
         "(* 2 3)",
         "(1 2 3)",
-        "((lambda (x) (+ x 1)) 2)"
+        "((lambda (x) (+ x 1)) 2)",
+        "'(1 2 . 3)"
     ];
     for text in inputs {
         let mut parser = Parser::new(text.as_bytes());
