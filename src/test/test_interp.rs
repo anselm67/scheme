@@ -131,7 +131,7 @@ fn test_read_eval_number() {
 #[test]
 fn test_read_eval_closure() {
     let inputs = vec![
-        ("((lambda (x . y) (length y)) 1 2)", Value::Number(Number::Int(2))),
+        ("((lambda (x . y) (length y)) 1 2 3)", Value::Number(Number::Int(2))),
         ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
         ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
         ("((lambda (x y) (+ x y)) 1 2)", Value::Number(Number::Int(3))),

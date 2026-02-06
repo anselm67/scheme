@@ -227,12 +227,17 @@ impl<R: Read> Parser<R> {
         self.skip_whitespace();
         while let Some(c) = self.peek() {
             match c {
-                b')' => break,
+                b')' => {
+                    self.check_for(b')')?;
+                    return Ok(interp.heap.borrow_mut().alloc_list(&items));
+                },
                 b'.' => {
-                    let mut heap = interp.heap.borrow_mut();
                     self.next();
-                    let car = heap.alloc_list(&items);
                     let cdr = self.read(interp)?;
+                    self.skip_whitespace();
+                    self.check_for(b')')?;
+                    let mut heap = interp.heap.borrow_mut();
+                    let car = heap.alloc_list(&items);
                     let tail = heap.last(car)?;
                     heap.setcdr(interp.to_object(tail)?, cdr)?;
                     return Ok(car);
@@ -243,8 +248,9 @@ impl<R: Read> Parser<R> {
                 }
             }
         }
-        self.check_for(b')')?;
-        return Ok(interp.heap.borrow_mut().alloc_list(&items));
+        Err(SchemeError::SyntaxError(
+            "Unexpected end of file while parsing list.".to_string()
+        ))
     }
 
     // fn parse_vector(&mut self, interp: &Interp) -> Result<Value, SchemeError> {

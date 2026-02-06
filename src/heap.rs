@@ -69,6 +69,7 @@ fn extract_param_ids(interp: &Interp, params: Value) -> Result<(Vec<GcId>, bool)
         } else {
             is_nary = true;
             ids.push(interp.to_symbol(cdr)?);
+            break;
         }
     }
     Ok((ids, is_nary))
@@ -377,7 +378,9 @@ impl SchemeObject for GcId {
                             acc.push(value);
                             Ok(acc)
                         });
-                    car.eval(interp, env)?.apply(interp, env, args?)
+                    let func = car.eval(interp, env)?;
+                    println!("func: {}", interp.display(func));
+                    func.apply(interp, env, args?)
                 }
             },
             HeapObject::List(elements) => {

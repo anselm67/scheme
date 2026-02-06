@@ -8,6 +8,6 @@ pub mod macros;
 mod test {
     mod test_heap;
     mod test_eval;
-    mod test_interp;
+mod test_interp;
     mod test_parser;
 }
