@@ -1,6 +1,7 @@
-use std::io::Write;
-use std::{io, process};
+use std::{process};
 
+use rustyline::DefaultEditor;
+use rustyline::error::ReadlineError;
 use scheme::parser::Parser;
 use scheme::types::{Value};
 
@@ -16,29 +17,48 @@ fn eval_expr(interp: &Interp, expr: Value) {
     }
 }
 
-#[allow(dead_code)]
+const HISTORY_FILENAME: &str = ".scheme.history";
+
 fn repl(interp: &Interp) {
-    let input = io::stdin();
-    let mut parser = Parser::new(input);
+    let mut rl = DefaultEditor::new().expect("Failed to init REPL.");
     
+    if rl.load_history(HISTORY_FILENAME).is_err() {
+        println!("No previous history.");
+    }
+
     loop {
-        print!("? ");
-        io::stdout().flush().unwrap();
-        let expr = parser.read(interp);
-        match expr {
-            Ok(Value::Nil) => process::exit(0),
-            Ok(expr) => eval_expr(interp, expr),
-            Err(e) => eprintln!("Error: {:?}", e),
+        let readline = rl.readline("> ");
+        match readline {
+            Ok(line) => {
+                let _ = rl.add_history_entry(line.as_str());
+                let mut parser = Parser::new(line.as_bytes());
+                let expr = parser.read(interp);
+                match expr {
+                    Ok(Value::Nil) => process::exit(0),
+                    Ok(expr) => eval_expr(interp, expr),
+                    Err(e) => eprintln!("Error: {:?}", e),
+                }
+            },
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break;
+            },
+            Err(ReadlineError::Eof) => {
+                break;
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break;
+            }            
         }
     }
+    rl.save_history(HISTORY_FILENAME).expect(format!(
+        "Failed to save history to {}.", HISTORY_FILENAME).as_str()
+    );
 }
 
 fn main() {
     let interp = Interp::new();
 
-    // repl(&interp);
-    match interp.load("src/scheme/sample.scm") {
-        Ok(_) => { },
-        Err(e) => eprintln!("Failed to load file {:?}", e)
-    }
+    repl(&interp);
 }

@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{RefCell};
 use std::collections::HashMap;
 use std::fs::File;
 use std::process;
@@ -96,6 +96,7 @@ impl Interp {
 
         // Initialize system primitive functions.
         self.define_primitive("debug", primitive_debug);
+        self.define_primitive("load", primitive_load);
         self.define_primitive("quit", primitive_quit);
         self.define_primitive("exit", primitive_quit);
     }
@@ -165,6 +166,32 @@ impl Interp {
         match value {
             Value::Char(ch) => Some(ch),
             _ => None,
+        }
+    }
+
+    pub fn is_string(&self, value: Value, buf: &mut String) -> bool {
+        if let Some(id) = self.is_object(value) {
+            let heap = self.heap.borrow();
+            if let HeapObject::String(s) = heap.get(id) {
+                buf.clear();
+                buf.push_str(s);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    pub fn to_string(&self, value: Value, buf: &mut String) -> Result<bool, SchemeError> {
+        let id = self.to_object(value)?;
+        let heap = self.heap.borrow();
+        if let HeapObject::String(s) = heap.get(id) {
+            buf.clear();
+            buf.push_str(s);
+            Ok(true)
+        } else {
+            Err(SchemeError::TypeError(format!(
+                "Expected a String, but got a {}.", value.type_name())
+            ))
         }
     }
 
@@ -502,7 +529,7 @@ fn primitive_char_ci_gte(_interp: &Interp, args: &[Value]) -> Result<Value, Sche
     Ok(Value::Boolean(ch1.to_ascii_lowercase() >= ch2.to_ascii_lowercase()))
 }
 
-pub fn primitive_debug(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_debug(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
     for (i, arg) in args.iter().enumerate() {
         if i > 0 {
             print!(" ");
@@ -511,4 +538,14 @@ pub fn primitive_debug(interp: &Interp, args: &[Value]) -> Result<Value, SchemeE
     }
     println!();
     Ok(Value::Boolean(true))
+}
+
+fn primitive_load(interp: &Interp, args: &[Value]) -> Result<Value, SchemeError> {
+    let mut retval = Value::Nil;
+    let mut filename = String::new();
+    for arg in args {
+        interp.to_string(*arg, &mut filename)?;
+        retval = interp.load(&filename)?;
+    }
+    Ok(retval)
 }

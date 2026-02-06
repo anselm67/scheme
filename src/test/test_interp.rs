@@ -12,20 +12,20 @@ fn eval_expr(interp: &Interp, expr: Value) {
 
 fn check_exprs(interp: &Interp, inputs: &Vec<(&str, Value)>) {
     for (text, expected) in inputs {
-    let mut parser = Parser::new(text.as_bytes());
-    let expr = parser.read(&interp);
-    match expr {
-        Ok(expr) => {
-            match interp.eval(expr) {
-                Ok(value) => assert_eq!(value, *expected),
-                Err(e) => panic!("Eval {} failed with error: {:?}", text, e)
-            }
-        },
-        Err(e) => panic!("Parse {} failed, error: {:?}.", text, e)
+        let mut parser = Parser::new(text.as_bytes());
+        let expr = parser.read(&interp);
+        match expr {
+            Ok(expr) => {
+                match interp.eval(expr) {
+                    Ok(value) => assert_eq!(value, *expected),
+                    Err(e) => panic!("Eval {} failed with error: {:?}", text, e)
+                }
+            },
+            Err(e) => panic!("Parse {} failed, error: {:?}.", text, e)
+        }
     }
 }
 
-}
 #[test]
 fn test_cond() {
     let interp = Interp::new();
