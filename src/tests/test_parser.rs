@@ -23,7 +23,7 @@ fn test_parse_fails() {
     let interp = Interp::new();
 
     let inputs = vec![
-        "(*, 2 3)",
+        "(* 2 3",
     ];
     for text in inputs {
         let mut parser = Parser::new(text.as_bytes());

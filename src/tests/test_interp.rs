@@ -185,3 +185,11 @@ fn test_read_eval_char() {
     check_exprs(&interp, &inputs);
 }
 
+#[test]
+fn test_read_eval_functional() {
+    let inputs = vec![
+        ("(eval (append (list (list (quote lambda) (quote (x y)) (quote (+ x y))) 1 2)))", Value::Number(Number::Int(3))),
+    ];
+    let interp = Interp::new();
+    check_exprs(&interp, &inputs);
+}

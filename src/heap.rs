@@ -53,6 +53,7 @@ pub enum Keyword {
     True = 4,
     False = 5,
     SetBang = 6,
+    QuasiQuote = 7,
 }
 
 fn extract_param_ids(interp: &Interp, params: Value) -> Result<(Vec<GcId>, bool), SchemeError> {
@@ -87,6 +88,7 @@ impl Keyword {
             4 => Some(Keyword::True),
             5 => Some(Keyword::False),
             6 => Some(Keyword::SetBang),
+            7 => Some(Keyword::QuasiQuote),
             _ => None,
         }
     }
@@ -136,7 +138,9 @@ impl Keyword {
                             }))
                         }
                     },
-                    _ => Err(SchemeError::EvalError("lambda expects at least 2 arguments".to_string())),
+                    _ => Err(SchemeError::EvalError(format!(
+                        "lambda expects at least 2 arguments, got {}", args.len()
+                    ))),
                 }
             }
             Keyword::Quote => {
@@ -145,6 +149,9 @@ impl Keyword {
                 }
                 Ok(args[0])
             }
+            Keyword::QuasiQuote => {
+                interp.expand(args)
+            },
             Keyword::SetBang => {
                 if args.len() != 2 {
                     return Err(SchemeError::EvalError("set! expects exactly 2 arguments".to_string()));
@@ -198,6 +205,8 @@ impl Heap {
         assert!(false_id == Keyword::False as usize, "Keyword '#f' should have GcId 5");
         let set_bang_id = self.intern_symbol_to_gcid("set!");
         assert!(set_bang_id == Keyword::SetBang as usize, "Keyword 'set!' should have GcId 6");
+        let quasiquote = self.intern_symbol_to_gcid("quasiquote");
+        assert!(quasiquote == Keyword::QuasiQuote as usize, "Keyword 'quasiquote' should have GcId 7");
     }
 
     pub fn get(&self, id: GcId) -> &HeapObject {
@@ -297,18 +306,24 @@ pub trait Apply {
 }
 
 impl Apply for Value {
-    fn apply(&self, interp: &Interp, _env: &Rc<RefCell<Env>>, args: Vec<Value>) 
+    fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) 
         -> Result<Value, SchemeError> 
     {
         let obj = {
             let heap = interp.heap.borrow();
             match self {
                 Value::Object(id) => heap.get(*id).clone(),
-                _ => return Err(SchemeError::TypeError("Attempted to apply a non-object value".to_string())),
+                _ => return Err(SchemeError::TypeError(format!(
+                    "Attempted to apply a non-object value with type {}", self.type_name()
+                ))),
             }
         };
     
         match obj {
+            HeapObject::Pair(car, _) => {
+                let func = car.eval(interp, env)?;
+                func.apply(interp, env, args)
+            },
             HeapObject::Closure(closure) => {
                 if closure.params.len() != args.len() {
                     return Err(SchemeError::EvalError("Incorrect number of arguments passed to closure".to_string()));
@@ -344,7 +359,9 @@ impl Apply for Value {
                 Ok(result)
             },
             HeapObject::Primitive(pr) => pr(interp, &args),
-            _ => Err(SchemeError::TypeError("Attempted to apply a non-primitive object".to_string())),
+            any => Err(SchemeError::TypeError(format!(
+                "Attempted to apply a non-primitive object with type {}", any.type_name()
+            ))),
         }
     }
 }

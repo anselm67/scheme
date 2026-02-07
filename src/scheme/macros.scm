@@ -19,3 +19,6 @@
 
 
 (define hello "2. macros.scm")
+
+(define v '((x 1) (y 2)))
+(define p '((debug x) (debug y) (+ x y)))

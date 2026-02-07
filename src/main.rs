@@ -7,6 +7,7 @@ use scheme::types::{Value};
 
 use scheme::interp::{Interp};
 
+#[allow(dead_code)]
 fn eval_expr(interp: &Interp, expr: Value) {
     let result = interp.eval(expr);
     match result {
@@ -36,7 +37,7 @@ fn repl(interp: &Interp) {
                 match expr {
                     Ok(Value::Nil) => process::exit(0),
                     Ok(expr) => {
-                        println!("eval: {}", interp.display(expr));
+                        println!("parser: {}", interp.display(expr));
                         eval_expr(interp, expr)
                     },
                     Err(e) => eprintln!("Error: {:?}", e),

@@ -6,7 +6,6 @@ use crate::types::{Number, SchemeError, Value};
 
 pub struct Parser<R: Read> {
     reader: Peekable<Bytes<BufReader<R>>>,
-    backquote_depth: i64,
 }
 
 impl<R: Read> Parser<R> {
@@ -14,7 +13,6 @@ impl<R: Read> Parser<R> {
     pub fn new(reader: R) -> Self {
         Self {
             reader: BufReader::new(reader).bytes().peekable(),
-            backquote_depth: 0,
         }
     }
 
@@ -254,80 +252,6 @@ impl<R: Read> Parser<R> {
         ))
     }
 
-    fn list_quote(&self, interp: &Interp, value: Value)  -> Result<Value, SchemeError> { 
-        let quote = interp.quote(value)?;
-        let mut heap = interp.heap.borrow_mut();
-        let list = heap.intern_symbol(&"list");
-        Ok(heap.alloc_list(&[list, quote]))
-    }
-
-    fn list(&self, interp: &Interp, value: Value)  -> Result<Value, SchemeError> { 
-        let mut heap = interp.heap.borrow_mut();
-        let list = heap.intern_symbol(&"list");
-        Ok(heap.alloc_list(&[list, value]))
-    }
-
-    fn parse_backquote_inner(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
-        // TODO Should we allow for nested backquotes?
-
-        let mut items = Vec::new();
-        {
-            let mut heap = interp.heap.borrow_mut();
-            items.insert(0, heap.intern_symbol("append"))
-        }
-        self.skip_whitespace();
-        while let Some(c) = self.peek() {
-            match c {
-                b')' => {
-                    self.check_for(b')')?;
-                    let mut heap = interp.heap.borrow_mut();
-                    return Ok(heap.alloc_list(&items));
-                },
-                b'.' => {
-                    self.next();
-                    let cdr = self.read(interp)?;
-                    self.skip_whitespace();
-                    self.check_for(b')')?;
-                    let mut heap = interp.heap.borrow_mut();
-                    let car = heap.alloc_list(&items);
-                    let tail = heap.last(car)?;
-                    heap.setcdr(interp.to_object(tail)?, cdr)?;
-                    return Ok(car);
-                },
-                b',' => {
-                    self.next();
-                    match self.peek() {
-                        Some(b'@') => {
-                            self.next();
-                            let item = self.read(interp)?;
-                            items.push(item);
-                        },
-                        _ => {
-                            let item = self.read(interp)?;
-                            items.push(self.list(interp, item)?);
-                        }
-                    }
-                    self.skip_whitespace();
-                }
-                _ => {
-                    let item = self.read(interp)?;
-                    items.push(self.list_quote(interp, item)?);
-                    self.skip_whitespace();
-                }
-            }
-        }
-        Err(SchemeError::SyntaxError(
-            "Unexpected end of file while parsing list.".to_string()
-        ))
-    }
-
-    fn parse_backquote(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
-        self.backquote_depth +=1 ;
-        let retval = self.parse_backquote_inner(interp);
-        self.backquote_depth -= 1;
-        retval
-    }
-
     // fn parse_vector(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
     //     let mut list = Vec::new();
     //     self.skip_whitespace();
@@ -371,25 +295,17 @@ impl<R: Read> Parser<R> {
             },
             Some(ch) if ch == b'`' => {
                 self.next();
-                if self.peek() == Some(b'(') {
-                    self.next();
-                    self.parse_backquote(interp)
-                } else {
-                    let value = self.read(interp)?;
-                    interp.quote(value)
-                }
+                let value = self.read(interp)?;
+                interp.quasiquote( value)
             },
-            Some(ch) if ch == b',' && self.backquote_depth > 0 => {
+            Some(ch) if ch == b',' => {
                 self.next();
                 let retval = match self.peek() {
                     Some(b'@') => {
                         self.next();
-                        self.read(interp)
+                        interp.unquote_splice(self.read(interp)?)
                     },
-                    _ => {
-                        let item = self.read(interp)?;
-                        self.list(interp, item)
-                    }
+                    _ => interp.unquote(self.read(interp)?)
                 };
                 self.skip_whitespace();
                 retval
