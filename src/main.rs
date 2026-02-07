@@ -35,7 +35,10 @@ fn repl(interp: &Interp) {
                 let expr = parser.read(interp);
                 match expr {
                     Ok(Value::Nil) => process::exit(0),
-                    Ok(expr) => eval_expr(interp, expr),
+                    Ok(expr) => {
+                        println!("eval: {}", interp.display(expr));
+                        eval_expr(interp, expr)
+                    },
                     Err(e) => eprintln!("Error: {:?}", e),
                 }
             },
