@@ -23,7 +23,8 @@ pub enum HeapObject {
     String(String),
     Primitive(PrimitiveFn),
     Closure(Box<Closure>),
-    NaryClosure(Box<Closure>)
+    NaryClosure(Box<Closure>),
+    SyntaxForm(Box<Closure>),
     // Other heap-allocated object types can be added here
 }
 
@@ -39,6 +40,7 @@ impl HeapObject {
             Self::Primitive(_) => "Primitive",
             Self::Closure(_) => "Closure",
             Self::NaryClosure(_) => "n-Closure",
+            Self::SyntaxForm(_) => "SyntaxForm",
         }
     }
 }
@@ -117,6 +119,18 @@ impl Keyword {
                     Err(SchemeError::TypeError("set! first argument must be a variable".to_string()))
                 }
             }
+            Keyword::DefineSyntax => {
+                check_arity!(args, 2);
+                let var = &args[0];
+                let lambda = &args[1..];
+                if let Value::Object(var_id) = var {
+                    let mut heap = interp.heap.borrow_mut();
+                    env.borrow_mut().define(*var_id, heap.alloc_list(lambda));
+                    Ok(*var)
+                } else {
+                    Err(SchemeError::TypeError("define-syntax first argument must be a variable".to_string()))
+                }
+            }
             Keyword::Lambda => {
                 match args {
                     [params_value, body @ ..] => {
@@ -150,9 +164,6 @@ impl Keyword {
                 let expr = interp.expand(args[0])?;
                 interp.eval(env, expr)
             },
-            Keyword::DefineSyntax => {
-                Err(SchemeError::EvalError(format!("Not implemeted")))
-            }
             Keyword::SetBang => {
                 check_arity!(args, 2);
                 let var = &args[0];
@@ -304,6 +315,12 @@ impl Heap {
     pub fn alloc_nary_closure(&mut self, closure: Closure) -> Value {
         let id: GcId = self.objects.len();
         self.objects.push(HeapObject::NaryClosure(Box::new(closure)));
+        Value::Object(id)
+    }
+
+    pub fn alloc_syntax_form(&mut self, closure: Closure) -> Value {
+        let id: GcId = self.objects.len();
+        self.objects.push(HeapObject::SyntaxForm(Box::new(closure)));
         Value::Object(id)
     }
 
@@ -488,6 +505,7 @@ impl SchemeObject for GcId {
             HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
+            HeapObject::SyntaxForm(_) => write!(f, "<syntax-form {}>", id),
             HeapObject::FreeSlot(_) => write!(f, "*** FREE SLOT ***")
         }
     }

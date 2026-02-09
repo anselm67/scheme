@@ -18,10 +18,10 @@
         `((lambda ,(map car bindings) ,@body) ,@(map cadr bindings)))
 )
 
+(define-syntax begin exprs `((lambda () ,@exprs)))
 
-(define v '((x 1) (y 2)))
-(define p '((debug x) (debug y) (+ x y)))
-
-(define f (lambda (x) `(debug ,x)))
+(define-syntax unless 
+    (lambda (cond . body) `(if (not ,cond) ,@body))
+)
 
 (debug "loaded.")
