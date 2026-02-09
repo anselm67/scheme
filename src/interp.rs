@@ -273,6 +273,11 @@ impl Interp {
         }
     }
 
+    pub fn to_car(&self, value: Value)  -> Result<Value, SchemeError> {
+        let (car, _) = self.to_pair(value)?;
+        Ok(car)
+    }
+
     pub fn to_symbol(&self, value: Value) -> Result<GcId, SchemeError> {
         let id = self.to_object(value)?;
         match self.heap.borrow().get(id) {
@@ -292,13 +297,8 @@ impl Interp {
     }
 
     pub fn quasiquote(&self, obj: Value) -> Result<Value, SchemeError> {
-        if let Some(..) = self.is_pair(obj) {
-            let mut heap = self.heap.borrow_mut();
-            Ok(heap.alloc_pair(self.quasiquote, obj))
-        } else {
-            let mut heap = self.heap.borrow_mut();
-            Ok(heap.alloc_list(&[self.quasiquote, obj]))
-        }
+        let mut heap = self.heap.borrow_mut();
+        Ok(heap.alloc_list(&[self.quasiquote, obj]))
     }
 
     pub fn unquote(&self, obj: Value) -> Result<Value, SchemeError> {
@@ -316,26 +316,18 @@ impl Interp {
         Ok(heap.alloc_list(&[self.list, obj]))
     }
 
-    fn is_splice(&self, value: Value) -> Option<Value> {
+    fn is_splice(&self, value: Value) -> Result<Option<Value>, SchemeError> {
         if let Some((car, cdr)) = self.is_pair(value) 
-            && car == self.unquote_splice 
+            && car == self.unquote_splice
         {
-            if let Ok((cadr, cddr)) = self.to_pair(cdr) 
-                && self.is_nil(cddr) 
-            {
-                Some(cadr)
-            } else {
-                // TODO This should Err
-                None
-            }
+            let (cadr, _) = self.to_pair(cdr)?;
+            Ok(Some(cadr))
         } else {
-            None
+            Ok(None)
         }
     }
 
-    fn expand_one(&self, expr: Value) -> Result<Value, SchemeError> {
-        // TODO Remove debug print 
-        println!("expand_one: {}", self.display(expr));
+    pub fn expand(&self, expr: Value) -> Result<Value, SchemeError> {
         match expr {
             Value::Object(id) => {
                 let obj = {
@@ -343,51 +335,32 @@ impl Interp {
                 };
                 match obj {
                     HeapObject::Pair(car, cdr) if car == self.unquote => {
-                        if let Some((cadr, cddr)) = self.is_pair(cdr) 
-                            && self.is_nil(cddr) 
-                        {
-                            self.list(cadr)
-                        } else {
-                            self.list(cdr)
-                        }
+                        self.to_car(cdr)
                     },
                     HeapObject::Pair(..) => {
-                        let args = self.fold_list(
-                            expr, 
-                            Vec::new(),
-                            |mut acc, obj| {
-                                if let Some(expr) = self.is_splice(obj) {
-                                    acc.push(expr)
+                        let mut p = expr;
+                        let mut args = vec![self.append];
+                        loop {
+                            if let Some((car, cdr)) = self.is_pair(p) {
+                                if let Some(spliced) = self.is_splice(car)? {
+                                    args.push(spliced)
                                 } else {
-                                    acc.push(self.list(self.expand_one(obj)?)?)
+                                    args.push(self.list(self.expand(car)?)?);
                                 }
-                                Ok(acc)
+                                p = cdr;
+                            } else if p == Value::Nil {
+                                return Ok(self.heap.borrow_mut().alloc_list(&args));
+                            } else {
+                                return Ok(self.heap.borrow_mut().alloc_list_with_cdr(&args, p));
                             }
-                        )?;
-                        Ok(self.heap.borrow_mut().alloc_list(&args))
+                        }
+                        
                     },
-                    _ => self.list(self.quote(expr)?)
+                    _ => self.quote(expr)
                 }
             },
-            _ => self.list(self.quote(expr)?)
+            _ => self.quote(expr)
         }
-    }
-
-    pub fn expand(&self, values: &[Value]) -> Result<Value, SchemeError> {
-        // TODO Remove debug statement.
-        for (i, arg) in values.into_iter().enumerate() {
-            println!("{} = {}", i, self.display(*arg));
-        }
-        let mut args = values.into_iter().map(
-            |arg| {
-                if let Some(expr) = self.is_splice(*arg) {
-                    Ok(expr)
-                } else {
-                    self.expand_one(*arg)
-                }
-            }).collect::<Result<Vec<Value>, SchemeError>>()?;
-        args.insert(0, self.append);
-        Ok(self.heap.borrow_mut().alloc_list(&args))
     }
 
     pub fn load(&self, filename: &str) -> Result<Value, SchemeError> {

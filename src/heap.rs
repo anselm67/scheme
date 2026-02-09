@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 use crate::{
-    env::Env, interp::Interp, types::{GcId, SchemeError, SchemeObject, Value}
+    check_arity, env::Env, interp::Interp, types::{GcId, SchemeError, SchemeObject, Value}
 };
 
 pub type PrimitiveFn = fn(&Interp, &[Value]) -> Result<Value, SchemeError>;
@@ -96,9 +96,7 @@ impl Keyword {
     fn eval(interp: &Interp, env: &Rc<RefCell<Env>>, keyword: Keyword, args: &[Value]) -> Result<Value, SchemeError> {
         match keyword {
             Keyword::If => {
-                if args.len() != 3 {
-                    return Err(SchemeError::EvalError("if expects exactly 3 arguments".to_string()));
-                }
+                check_arity!(args, 3);
                 let condition = args[0].eval(interp, env)?;
                 match condition {
                     Value::Boolean(true) => args[1].eval(interp, env),
@@ -107,9 +105,7 @@ impl Keyword {
                 }
             }
             Keyword::Define => {
-                if args.len() != 2 {
-                    return Err(SchemeError::EvalError("define! expects exactly 2 arguments".to_string()));
-                }
+                check_arity!(args, 2);
                 let var = &args[0];
                 let value = args[1].eval(interp, env)?;
                 if let Value::Object(var_id) = var {
@@ -144,18 +140,16 @@ impl Keyword {
                 }
             }
             Keyword::Quote => {
-                if args.len() != 1 {
-                    return Err(SchemeError::EvalError("quote expects exactly 1 argument".to_string()));
-                }
+                check_arity!(args, 1);
                 Ok(args[0])
             }
             Keyword::QuasiQuote => {
-                interp.expand(args)
+                check_arity!(args, 1);
+                let expr = interp.expand(args[0])?;
+                interp.eval(expr)
             },
             Keyword::SetBang => {
-                if args.len() != 2 {
-                    return Err(SchemeError::EvalError("set! expects exactly 2 arguments".to_string()));
-                }
+                check_arity!(args, 2);
                 let var = &args[0];
                 let value = args[1].eval(interp, env)?;
                 if let Value::Object(var_id) = var {
@@ -271,6 +265,12 @@ impl Heap {
 
     pub fn alloc_list(&mut self, items: &[Value]) -> Value {
         items.into_iter().rfold(Value::Nil, |acc, val| {
+            self.alloc_pair(*val, acc)
+        })
+    }
+
+    pub fn alloc_list_with_cdr(&mut self, items: &[Value], cdr: Value) -> Value {
+        items.into_iter().rfold(cdr, |acc, val| {
             self.alloc_pair(*val, acc)
         })
     }
@@ -481,6 +481,43 @@ impl SchemeObject for GcId {
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
             HeapObject::FreeSlot(_) => write!(f, "*** FREE SLOT ***")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_alloc_pair() {
+        let mut heap = Heap::new();
+        let pair = heap.alloc_list(&[Value::Boolean(true)]);
+        assert!(matches!(pair, Value::Object(_)));
+        if let Value::Object(id) = pair {
+            let obj = heap.get(id);
+            assert!(matches!(*obj, HeapObject::Pair(..)));
+            if let HeapObject::Pair(car, cdr) = obj {
+                assert_eq!(*car, Value::Boolean(true));
+                assert_eq!(*cdr, Value::Nil);
+            }
+        }
+    }
+
+    #[test]
+     fn test_alloc_pair_with_cdr() {
+        let mut heap = Heap::new();
+        let pair = heap.alloc_list_with_cdr(
+            &[Value::Boolean(true)], Value::Boolean(false)
+        );
+        assert!(matches!(pair, Value::Object(_)));
+        if let Value::Object(id) = pair {
+            let obj = heap.get(id);
+            assert!(matches!(*obj, HeapObject::Pair(..)));
+            if let HeapObject::Pair(car, cdr) = obj {
+                assert_eq!(*car, Value::Boolean(true));
+                assert_eq!(*cdr, Value::Boolean(false));
+            }
         }
     }
 }
