@@ -12,8 +12,8 @@ fn test_eval_self_types() {
     let bool_val = Value::Boolean(true);
     let nil_val = Value::Nil;
 
-    assert_eq!(interp.eval(int_val).unwrap(), int_val);
-    assert_eq!(interp.eval(float_val).unwrap(), float_val);
-    assert_eq!(interp.eval(bool_val).unwrap(), bool_val);
-    assert_eq!(interp.eval(nil_val).unwrap(), nil_val);
+    assert_eq!(interp.eval(&interp.env, int_val).unwrap(), int_val);
+    assert_eq!(interp.eval(&interp.env, float_val).unwrap(), float_val);
+    assert_eq!(interp.eval(&interp.env, bool_val).unwrap(), bool_val);
+    assert_eq!(interp.eval(&interp.env, nil_val).unwrap(), nil_val);
 }
