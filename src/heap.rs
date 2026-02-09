@@ -4,7 +4,7 @@ use crate::{
     check_arity, env::Env, interp::Interp, types::{GcId, SchemeError, SchemeObject, Value}
 };
 
-pub type PrimitiveFn = fn(&Interp, &[Value]) -> Result<Value, SchemeError>;
+pub type PrimitiveFn = fn(&Interp, env: &Rc<RefCell<Env>>, &[Value]) -> Result<Value, SchemeError>;
 
 
 #[derive(Clone)]
@@ -54,6 +54,7 @@ pub enum Keyword {
     False = 5,
     SetBang = 6,
     QuasiQuote = 7,
+    DefineSyntax = 8,
 }
 
 fn extract_param_ids(interp: &Interp, params: Value) -> Result<(Vec<GcId>, bool), SchemeError> {
@@ -89,6 +90,7 @@ impl Keyword {
             5 => Some(Keyword::False),
             6 => Some(Keyword::SetBang),
             7 => Some(Keyword::QuasiQuote),
+            8 => Some(Keyword::DefineSyntax),
             _ => None,
         }
     }
@@ -146,8 +148,11 @@ impl Keyword {
             Keyword::QuasiQuote => {
                 check_arity!(args, 1);
                 let expr = interp.expand(args[0])?;
-                interp.eval(expr)
+                interp.eval(env, expr)
             },
+            Keyword::DefineSyntax => {
+                Err(SchemeError::EvalError(format!("Not implemeted")))
+            }
             Keyword::SetBang => {
                 check_arity!(args, 2);
                 let var = &args[0];
@@ -185,6 +190,7 @@ impl Heap {
     }
 
     fn intern_special_keywwords(&mut self) {
+        // TODO Cleanup indent & line breaks.
         let if_id =self.intern_symbol_to_gcid("if");
         assert!(if_id == Keyword::If as usize, "Keyword 'if' should have GcId 0");
         let define_id = self.intern_symbol_to_gcid("define");
@@ -199,8 +205,10 @@ impl Heap {
         assert!(false_id == Keyword::False as usize, "Keyword '#f' should have GcId 5");
         let set_bang_id = self.intern_symbol_to_gcid("set!");
         assert!(set_bang_id == Keyword::SetBang as usize, "Keyword 'set!' should have GcId 6");
-        let quasiquote = self.intern_symbol_to_gcid("quasiquote");
-        assert!(quasiquote == Keyword::QuasiQuote as usize, "Keyword 'quasiquote' should have GcId 7");
+        let quasiquote_id = self.intern_symbol_to_gcid("quasiquote");
+        assert!(quasiquote_id == Keyword::QuasiQuote as usize, "Keyword 'quasiquote' should have GcId 7");
+        let define_syntax_id = self.intern_symbol_to_gcid("define-syntax");
+        assert!(define_syntax_id == Keyword::DefineSyntax as usize, "Keyword 'define-syntax' should have GcId 8");
     }
 
     pub fn get(&self, id: GcId) -> &HeapObject {
@@ -358,7 +366,7 @@ impl Apply for Value {
                 }
                 Ok(result)
             },
-            HeapObject::Primitive(pr) => pr(interp, &args),
+            HeapObject::Primitive(pr) => pr(interp, env, &args),
             any => Err(SchemeError::TypeError(format!(
                 "Attempted to apply a non-primitive object with type {}", any.type_name()
             ))),

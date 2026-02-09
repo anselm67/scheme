@@ -14,11 +14,14 @@
  
 (define let-expr 
     (lambda (keyword bindings . body)
+        (debug bindings)
         `((lambda ,(map car bindings) ,@body) ,@(map cadr bindings)))
 )
 
 
-(define hello "2. macros.scm")
-
 (define v '((x 1) (y 2)))
 (define p '((debug x) (debug y) (+ x y)))
+
+(define f (lambda (x) `(debug ,x)))
+
+(debug "loaded.")
