@@ -18,7 +18,7 @@ pub struct Interp {
     list: Value,
     quasiquote: Value,
     unquote: Value,
-    unquote_splice: Value,
+    unquote_splicing: Value,
 }
 
 impl Interp {
@@ -29,14 +29,14 @@ impl Interp {
         };
         let env_handle = Rc::new(RefCell::new(global_env));
         let heap_handle = RefCell::new(heap::Heap::new());
-        let (append, list, quasiquote, unquote, unquote_splice) = {
+        let (append, list, quasiquote, unquote, unquote_splicing) = {
             let mut heap = heap_handle.borrow_mut();
             (
                 heap.intern_symbol("append"),
                 heap.intern_symbol("list"),
                 heap.intern_symbol("quasiquote"),
                 heap.intern_symbol("unquote"),
-                heap.intern_symbol("unquote-splice"),
+                heap.intern_symbol("unquote-splicing"),
             )
         };
         let interp = Self {
@@ -47,7 +47,7 @@ impl Interp {
             append: append,
             quasiquote: quasiquote,
             unquote: unquote,
-            unquote_splice: unquote_splice
+            unquote_splicing: unquote_splicing
         };  
         interp.init();
         interp
@@ -306,9 +306,9 @@ impl Interp {
         Ok(heap.alloc_list(&[self.unquote, obj]))
     }
 
-    pub fn unquote_splice(&self, obj: Value) -> Result<Value, SchemeError> {
+    pub fn unquote_splicing(&self, obj: Value) -> Result<Value, SchemeError> {
         let mut heap = self.heap.borrow_mut();
-        Ok(heap.alloc_list(&[self.unquote_splice, obj]))
+        Ok(heap.alloc_list(&[self.unquote_splicing, obj]))
     }
 
     pub fn list(&self, obj: Value) -> Result<Value, SchemeError> {
@@ -316,9 +316,9 @@ impl Interp {
         Ok(heap.alloc_list(&[self.list, obj]))
     }
 
-    fn is_splice(&self, value: Value) -> Result<Option<Value>, SchemeError> {
+    fn is_splicing(&self, value: Value) -> Result<Option<Value>, SchemeError> {
         if let Some((car, cdr)) = self.is_pair(value) 
-            && car == self.unquote_splice
+            && car == self.unquote_splicing
         {
             let (cadr, _) = self.to_pair(cdr)?;
             Ok(Some(cadr))
@@ -342,7 +342,7 @@ impl Interp {
                         let mut args = vec![self.append];
                         loop {
                             if let Some((car, cdr)) = self.is_pair(p) {
-                                if let Some(spliced) = self.is_splice(car)? {
+                                if let Some(spliced) = self.is_splicing(car)? {
                                     args.push(spliced)
                                 } else {
                                     args.push(self.list(self.expand(car)?)?);

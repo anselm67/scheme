@@ -303,7 +303,7 @@ impl<R: Read> Parser<R> {
                 let retval = match self.peek() {
                     Some(b'@') => {
                         self.next();
-                        interp.unquote_splice(self.read(interp)?)
+                        interp.unquote_splicing(self.read(interp)?)
                     },
                     _ => interp.unquote(self.read(interp)?)
                 };
