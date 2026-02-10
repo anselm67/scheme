@@ -12,16 +12,16 @@
 )
 (debug "1. macros.scm")
  
-(define let-expr 
-    (lambda (keyword bindings . body)
+(define-syntax let
+    (lambda (bindings . body)
         (debug bindings)
         `((lambda ,(map car bindings) ,@body) ,@(map cadr bindings)))
 )
 
-(define-syntax begin exprs `((lambda () ,@exprs)))
+(define-syntax begin (lambda exprs `((lambda () ,@exprs))))
 
 (define-syntax unless 
-    (lambda (cond . body) `(if (not ,cond) ,@body))
+    (lambda (cond . body) `(if (not ,cond) (begin ,@body)))
 )
 
 (debug "loaded.")

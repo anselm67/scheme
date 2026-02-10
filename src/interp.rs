@@ -280,6 +280,15 @@ impl Interp {
         Ok(car)
     }
 
+    pub fn is_symbol(&self, value: Value) -> Option<GcId> {
+        if let Some(id) = self.is_object(value) {
+            if matches!(self.heap.borrow().get(id), HeapObject::Symbol(_)) {
+                return Some(id);
+            }
+        } 
+        None
+    }
+
     pub fn to_symbol(&self, value: Value) -> Result<GcId, SchemeError> {
         let id = self.to_object(value)?;
         match self.heap.borrow().get(id) {

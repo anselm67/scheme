@@ -24,7 +24,6 @@ pub enum HeapObject {
     Primitive(PrimitiveFn),
     Closure(Box<Closure>),
     NaryClosure(Box<Closure>),
-    SyntaxForm(Box<Closure>),
     // Other heap-allocated object types can be added here
 }
 
@@ -40,7 +39,6 @@ impl HeapObject {
             Self::Primitive(_) => "Primitive",
             Self::Closure(_) => "Closure",
             Self::NaryClosure(_) => "n-Closure",
-            Self::SyntaxForm(_) => "SyntaxForm",
         }
     }
 }
@@ -64,16 +62,21 @@ fn extract_param_ids(interp: &Interp, params: Value) -> Result<(Vec<GcId>, bool)
     let mut p = params;
     let mut is_nary = false;
 
-    while let Some((car, cdr)) = interp.is_pair(p) { 
-        ids.push(interp.to_symbol(car)?);
-        if interp.is_nil(cdr) {
-            break;
-        } else if interp.is_pair(cdr).is_some() {
-            p = cdr;
-        } else {
-            is_nary = true;
-            ids.push(interp.to_symbol(cdr)?);
-            break;
+    if let Some(id) = interp.is_symbol(params) {
+        ids.push(id);
+        is_nary = true;
+    } else {
+        while let Some((car, cdr)) = interp.is_pair(p) { 
+            ids.push(interp.to_symbol(car)?);
+            if interp.is_nil(cdr) {
+                break;
+            } else if interp.is_pair(cdr).is_some() {
+                p = cdr;
+            } else {
+                is_nary = true;
+                ids.push(interp.to_symbol(cdr)?);
+                break;
+            }
         }
     }
     Ok((ids, is_nary))
@@ -107,30 +110,14 @@ impl Keyword {
                     Value::Boolean(false) => args[2].eval(interp, env),
                     _ => Err(SchemeError::TypeError("if condition must evaluate to a boolean".to_string())),
                 }
-            }
+            },
             Keyword::Define => {
                 check_arity!(args, 2);
-                let var = &args[0];
+                let var_id = interp.to_object(args[0])?;
                 let value = args[1].eval(interp, env)?;
-                if let Value::Object(var_id) = var {
-                    env.borrow_mut().define(*var_id, value);
-                    Ok(value)
-                } else {
-                    Err(SchemeError::TypeError("set! first argument must be a variable".to_string()))
-                }
-            }
-            Keyword::DefineSyntax => {
-                check_arity!(args, 2);
-                let var = &args[0];
-                let lambda = &args[1..];
-                if let Value::Object(var_id) = var {
-                    let mut heap = interp.heap.borrow_mut();
-                    env.borrow_mut().define(*var_id, heap.alloc_list(lambda));
-                    Ok(*var)
-                } else {
-                    Err(SchemeError::TypeError("define-syntax first argument must be a variable".to_string()))
-                }
-            }
+                env.borrow_mut().define(var_id, value);
+                Ok(Value::Nil)
+            },
             Keyword::Lambda => {
                 match args {
                     [params_value, body @ ..] => {
@@ -318,12 +305,6 @@ impl Heap {
         Value::Object(id)
     }
 
-    pub fn alloc_syntax_form(&mut self, closure: Closure) -> Value {
-        let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::SyntaxForm(Box::new(closure)));
-        Value::Object(id)
-    }
-
 }
 pub trait Apply {
     fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) 
@@ -344,15 +325,14 @@ impl Apply for Value {
             }
         };
     
+        dbg!(format!("apply {}", obj.type_name()));
         match obj {
             HeapObject::Pair(car, _) => {
                 let func = car.eval(interp, env)?;
                 func.apply(interp, env, args)
             },
             HeapObject::Closure(closure) => {
-                if closure.params.len() != args.len() {
-                    return Err(SchemeError::EvalError("Incorrect number of arguments passed to closure".to_string()));
-                }
+                check_arity!(args, closure.params.len());
                 let new_env = Env::extend(closure.env.clone());
                 for (param_id, arg_value) in closure.params.iter().zip(args.iter()) {
                     new_env.borrow_mut().define(*param_id, *arg_value);
@@ -402,10 +382,12 @@ impl SchemeObject for GcId {
             heap.get(id).clone()
         };
         
+        dbg!(interp.display(Value::Object(id)));
         match obj {
             HeapObject::Pair(car, cdr) => {
                 if let Value::Object(func_id) = car 
-                    && let Some(keyword) = Keyword::from_id(func_id) {
+                    && let Some(keyword) = Keyword::from_id(func_id) 
+                {
                     // Special form handling - no args eval.
                     let args = interp.fold_list(
                         cdr,
@@ -414,7 +396,7 @@ impl SchemeObject for GcId {
                             acc.push(arg);
                             Ok(acc)
                         });
-                        Keyword::eval(interp, env, keyword, &args?)
+                    Keyword::eval(interp, env, keyword, &args?)
                 } else {
                     // Regular function call with arg eval.
                     let args = interp.fold_list(
@@ -505,7 +487,6 @@ impl SchemeObject for GcId {
             HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
-            HeapObject::SyntaxForm(_) => write!(f, "<syntax-form {}>", id),
             HeapObject::FreeSlot(_) => write!(f, "*** FREE SLOT ***")
         }
     }
