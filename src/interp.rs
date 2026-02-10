@@ -5,7 +5,7 @@ use std::process;
 use std::rc::Rc;
 
 use crate::env::Env;
-use crate::heap::{HeapObject, Keyword};
+use crate::heap::{Apply, HeapObject, Keyword};
 use crate::parser::Parser;
 use crate::{all_of_type, check_arity, check_min_arity, extract_args, heap};
 use crate::types::{DisplayWrapper, GcId, Number, SchemeError, SchemeObject, Value};
@@ -25,6 +25,7 @@ pub struct Interp {
 impl Interp {
     pub fn new() -> Self {
         let global_env = crate::env::Env {
+            macros: HashMap::new(),
             bindings: HashMap::new(),
             parent: None,
         };
@@ -70,6 +71,7 @@ impl Interp {
     fn init(&self) {
         self.define_primitive("eval", primitive_eval);
         self.define_primitive("apply", primitive_apply);
+        self.define_primitive("expand", primitive_expand);
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
         // Initialize math primitive functions
@@ -299,6 +301,15 @@ impl Interp {
         }
     }
 
+    // pub fn is_syntax(&self, value: Value) -> Option<Value> {
+    //     if let Value::Object(id) = value {
+    //         let env = self.env.borrow();
+    //         env.get_syntax(id)
+    //     } else {
+    //         None
+    //     }
+    // }
+
     pub fn quote(&self, obj: Value) -> Result<Value, SchemeError> {
         let value = &[
             Value::Object(Keyword::Quote as usize), 
@@ -338,7 +349,7 @@ impl Interp {
         }
     }
 
-    pub fn expand(&self, expr: Value) -> Result<Value, SchemeError> {
+    pub fn expand_quasiquote(&self, expr: Value) -> Result<Value, SchemeError> {
         match expr {
             Value::Object(id) => {
                 let obj = {
@@ -356,7 +367,7 @@ impl Interp {
                                 if let Some(spliced) = self.is_splicing(car)? {
                                     args.push(spliced)
                                 } else {
-                                    args.push(self.list(self.expand(car)?)?);
+                                    args.push(self.list(self.expand_quasiquote(car)?)?);
                                 }
                                 p = cdr;
                             } else if p == Value::Nil {
@@ -373,6 +384,46 @@ impl Interp {
                 }
             },
             _ => self.quote(expr)
+        }
+    }
+
+    fn expand_macro(&self, func: Value, args: Value) -> Result<Value, SchemeError> {
+        dbg!(format!("expand_macro {}", self.display(func)));
+        let args = self.fold_list(
+            args,
+            Vec::new(), 
+            |mut acc, arg| {
+                acc.push(self.expand(arg)?);
+                Ok(acc)
+            });
+        func.apply(self, &self.env, args?)
+    }
+
+    pub fn expand(&self, expr: Value) -> Result<Value, SchemeError> {
+        dbg!(format!("macro {}", self.display(expr)));
+        if let Some((car, cdr)) = self.is_pair(expr) {
+            if let Value::Object(id) = car
+                && let Some(func) = self.env.borrow().macros.get(&id) 
+            {
+                self.expand_macro(*func, cdr)
+            } else {
+                let mut updated = false;
+                let items = self.fold_list(
+                    cdr, vec![car], |mut acc, item| {
+                        let expansion = self.expand(item)?;
+                        updated = updated || expansion != item;
+                        acc.push(item);
+                        Ok(acc)
+                    });
+                if updated {
+                    let mut heap = self.heap.borrow_mut();
+                    Ok(heap.alloc_list(&items?))
+                } else {
+                    Ok(expr)
+                }
+            }
+        } else {
+            Ok(expr)
         }
     }
 
@@ -407,6 +458,11 @@ fn primitive_apply(interp: &Interp, env: &Rc<RefCell<Env>>, args: &[Value])  -> 
     check_min_arity!(args, 1);
     let func = args[0];
     func.apply(interp, env, args[1..].to_vec())
+}
+
+fn primitive_expand(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+    check_arity!(args, 1);
+    interp.expand(args[0])
 }
 
 fn primitive_add(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {

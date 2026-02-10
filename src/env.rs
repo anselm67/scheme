@@ -4,6 +4,7 @@ use crate::types::{GcId, SchemeError, Value};
 
 
 pub struct Env {
+    pub macros: HashMap<GcId, Value>,
     pub bindings: HashMap<GcId, Value>,
     pub parent: Option<Rc<RefCell<Env>>>,
 }
@@ -12,6 +13,7 @@ impl Env {
     
     pub fn new() -> Self {
         Self {
+            macros: HashMap::new(),
             bindings: HashMap::new(),
             parent: None,
         }
@@ -19,6 +21,7 @@ impl Env {
 
     pub fn extend(parent: Rc<RefCell<Env>>) -> Rc<RefCell<Env>> {
         Rc::new(RefCell::new(Env {
+            macros: HashMap::new(),
             bindings: HashMap::new(),
             parent: Some(parent),
         }))
@@ -26,6 +29,10 @@ impl Env {
 
     pub fn define(&mut self, key: GcId, value: Value) {
         self.bindings.insert(key, value);
+    }
+
+    pub fn define_syntax(&mut self, key: GcId, value: Value) {
+        self.macros.insert(key, value);
     }
 
     pub fn set_bang(&mut self, key: GcId, value: Value) -> Result<(), SchemeError> {

@@ -118,6 +118,13 @@ impl Keyword {
                 env.borrow_mut().define(var_id, value);
                 Ok(Value::Nil)
             },
+            Keyword::DefineSyntax => {
+                check_arity!(args, 2);
+                let var_id = interp.to_symbol(args[0])?;
+                let value = args[1].eval(interp, env)?;
+                env.borrow_mut().define_syntax(var_id, value);
+                Ok(Value::Nil)
+            },
             Keyword::Lambda => {
                 match args {
                     [params_value, body @ ..] => {
@@ -148,7 +155,7 @@ impl Keyword {
             }
             Keyword::QuasiQuote => {
                 check_arity!(args, 1);
-                let expr = interp.expand(args[0])?;
+                let expr = interp.expand_quasiquote(args[0])?;
                 interp.eval(env, expr)
             },
             Keyword::SetBang => {
@@ -325,7 +332,6 @@ impl Apply for Value {
             }
         };
     
-        dbg!(format!("apply {}", obj.type_name()));
         match obj {
             HeapObject::Pair(car, _) => {
                 let func = car.eval(interp, env)?;
@@ -382,7 +388,6 @@ impl SchemeObject for GcId {
             heap.get(id).clone()
         };
         
-        dbg!(interp.display(Value::Object(id)));
         match obj {
             HeapObject::Pair(car, cdr) => {
                 if let Value::Object(func_id) = car 
