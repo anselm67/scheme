@@ -24,15 +24,19 @@ impl<R: Read> Parser<R> {
         self.reader.next()?.ok()
     }
 
-    fn check_for(&mut self, expected: u8) -> Result<(), SchemeError> {
+    fn syntax_error(&self, msg: String) -> Result<Value, SchemeError> {
+        Err(SchemeError::SyntaxError(format!("Syntax error: {}", msg)))
+    }
+
+    fn check_for(&mut self, expected: u8) -> Result<Value, SchemeError> {
         match self.peek() {
-            Some(actual) if actual == expected => {self.next(); Ok(()) },
-            Some(actual) => Err(SchemeError::SyntaxError(format!(
+            Some(actual) if actual == expected => {self.next(); Ok(Value::Unbound) },
+            Some(actual) => self.syntax_error(format!(
                 "Expected '{}', found {}", expected as char, actual as char
-            ))),
-            None => Err(SchemeError::SyntaxError(format!(
+            )),
+            None => self.syntax_error(format!(
                 "Expected '{}', but reached end of file.", expected as char
-            )))
+            ))
         }
     }
 
@@ -98,12 +102,12 @@ impl<R: Read> Parser<R> {
         if has_dot || has_exponent {
             match token.parse::<f64>() {
                 Ok(num) => Ok(Value::Number(Number::Float(num))),
-                Err(_) => Err(SchemeError::SyntaxError(format!("Invalid number: {}", token))),  
+                Err(_) => self.syntax_error(format!("Invalid float number: {}", token)),  
             }
         } else {    
             match token.parse::<i64>() {
                 Ok(num) => Ok(Value::Number(Number::Int(num))),
-                Err(_) => Err(SchemeError::SyntaxError(format!("Invalid number: {}", token))),  
+                Err(_) => self.syntax_error(format!("Invalid integer number: {}", token)),  
             }
         }
     }
@@ -145,9 +149,7 @@ impl<R: Read> Parser<R> {
         }
         match i64::from_str_radix(&token, radix) {
             Ok(num) => Ok(Value::Number(Number::Int(num))),
-            Err(_) => Err(SchemeError::SyntaxError(format!(
-                "Invalid # number {token}."
-            )))
+            Err(_) => self.syntax_error(format!("Invalid '#xx' number {token}."))
         }
     }
 
@@ -171,9 +173,7 @@ impl<R: Read> Parser<R> {
                 "tab" => Ok(Value::Char(9)),
                 "newline" => Ok(Value::Char(10)),
                 "return" => Ok(Value::Char(13)),
-                _ => Err(SchemeError::SyntaxError(format!(
-                    "Invalid #\\ token {}.", token
-                )))
+                _ => self.syntax_error(format!("Invalid #\\ token {}.", token))
             }
         }
     }
@@ -188,11 +188,11 @@ impl<R: Read> Parser<R> {
             Some(ch) if ch == b'd' => self.parse_hash_number(10),
             Some(ch) if ch == b'x' => self.parse_hash_number(16),
             Some(ch) if ch == b'\\' => self.parse_hash_character(),
-            Some(ch) => Err(SchemeError::SyntaxError(format!(
+            Some(ch) => self.syntax_error(format!(
                 "Invalid char in # sequence {}", ch as char
-            ))),
-            None => Err(SchemeError::SyntaxError(
-                "Unexpected end of file while parsing a # expression.".to_string()
+            )),
+            None => self.syntax_error(format!(
+                "Unexpected end of file while parsing a # expression."
             ))
         }
     }
@@ -208,17 +208,17 @@ impl<R: Read> Parser<R> {
             } else if ch == b'\\' {
                 match self.next() {
                     Some(ch) => token.push(ch as char),
-                    None => return Err(SchemeError::SyntaxError(format!(
+                    None => return self.syntax_error(format!(
                         "Unexpected enf of file while parsing string."                    
-                    )))
+                    ))
                 }
             } else {
                 token.push(ch as char);
             }
         }
-        return Err(SchemeError::SyntaxError(format!(
-            "Unexpected enf of file while parsing string."
-        )))
+        self.syntax_error(format!(
+            "Unexpected end of file while parsing string."
+        ))
     }
 
     fn parse_list(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
@@ -247,8 +247,8 @@ impl<R: Read> Parser<R> {
                 }
             }
         }
-        Err(SchemeError::SyntaxError(
-            "Unexpected end of file while parsing list.".to_string()
+        self.syntax_error(format!(
+            "Unexpected end of file while parsing list."
         ))
     }
 
@@ -316,9 +316,7 @@ impl<R: Read> Parser<R> {
             },
             Some(ch) => {
                 self.next();
-                Err(SchemeError::SyntaxError(format!(
-                    "Unexpected character {}", ch as char)
-                ))
+                self.syntax_error(format!("Unexpected character {}", ch as char))
             },
             None => Ok(Value::Nil),
         };

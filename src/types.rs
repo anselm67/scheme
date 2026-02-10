@@ -175,7 +175,8 @@ pub enum Value {
     Char(u8),
     Boolean(bool),
     Object(GcId),
-    Nil
+    Nil,
+    Unbound,
 }
 
 impl Value {
@@ -187,6 +188,7 @@ impl Value {
             Self::Boolean(_) => "Boolean",
             Self::Object(_) => "Object",
             Self::Nil => "Nil",
+            Self::Unbound => "*unbound*",
         }
     }
 }
@@ -238,6 +240,7 @@ impl SchemeObject for Value {
             Value::Boolean(true) => write!(f, "#t"),
             Value::Boolean(false) => write!(f, "#f"),
             Value::Nil => write!(f, "()"),
+            Value::Unbound => write!(f, "*unbound*")
         }
     }
 
