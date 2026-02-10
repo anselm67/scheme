@@ -1,4 +1,4 @@
-use crate::{interp::Interp, parser::Parser, types::{Number, Value}};
+use crate::{interp::Interp, parser::Parser, types::{Number, SchemeError, Value}};
 
 
 fn eval_expr(interp: &Interp, expr: Value) {
@@ -22,6 +22,20 @@ fn check_exprs(interp: &Interp, inputs: &Vec<(&str, Value)>) {
                 }
             },
             Err(e) => panic!("Parse {} failed, error: {:?}.", text, e)
+        }
+    }
+}
+
+fn check_errors(interp: &Interp, inputs: &Vec<(&str, SchemeError)>) {
+    for (text, expected) in inputs {
+        let mut parser = Parser::new(text.as_bytes());
+        if let Ok(expr) = parser.read(&interp) {
+            match interp.eval(&interp.env, expr) {
+                Ok(_) => panic!("Failure was expected, but success happened!"),
+                Err(e) => assert_eq!(e, *expected)
+            }            
+        } else {
+            panic!("check_errors: couldn't parse {}", text);
         }
     }
 }
@@ -207,4 +221,14 @@ fn test_equality() {
     ];
     let interp = Interp::new();
     check_exprs(&interp, &inputs);
+}
+
+
+#[test]
+fn test_user_error() {
+    let inputs = vec![
+        ("(error \"a\")", SchemeError::UserError("a".to_string())),
+    ];
+    let interp = Interp::new();
+    check_errors(&interp, &inputs);
 }

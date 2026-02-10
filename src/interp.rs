@@ -1,6 +1,6 @@
 use std::cell::{RefCell};
 use std::collections::HashMap;
-use std::fs::File;
+use std::path::Path;
 use std::process;
 use std::rc::Rc;
 
@@ -74,8 +74,14 @@ impl Interp {
         self.define_primitive("expand", primitive_expand);
         self.define_primitive("eq?", primitive_eq);
         self.define_primitive("equal?", primitive_equal);
+        self.define_primitive("error", primitive_error);
+
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
+
+        // Initialize symbol functions.
+        self.define_primitive("symbol?", primitive_symbol_p);
+
         // Initialize math primitive functions
         self.define_primitive("number?", primitive_number_p);
         self.define_primitive("integer?", primitive_integer_p);
@@ -429,23 +435,21 @@ impl Interp {
         }
     }
 
-    pub fn load(&self, filename: &str) -> Result<Value, SchemeError> {
-        match File::open(filename) {
-            Ok(input) => {
-                let mut parser = Parser::new(input);
-                let mut retval = Value::Nil;
-                while let Ok(expr) = parser.read(self) {
-                    if matches!(expr, Value::Nil) {
-                        break;
-                    }
-                    retval = self.eval(&self.env, expr)?;
-                }
-                Ok(retval)
-            },
-            Err(_) => Err(SchemeError::FileNotFound(format!(
-                    "Can't open file {}.", filename
-                )))
+    pub fn load<P: AsRef<Path>>(&self, path: P) -> Result<Value, SchemeError> {
+        let path = path.as_ref(); // Convert P into a &Path
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
+    
+        let mut parser = Parser::new(content.as_bytes());
+        let mut retval = Value::Nil;
+        while let Ok(expr) = parser.read(self) {
+            if matches!(expr, Value::Nil) {
+                break;
             }
+            retval = self.expand(expr)?;
+            retval = self.eval(&self.env, retval)?;
+        }
+        Ok(retval)
     }
 
 }
@@ -476,6 +480,24 @@ fn primitive_eq(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> R
     check_arity!(args, 2);
     Ok(Value::Boolean(args[0] == args[1]))
 }
+
+fn primitive_error(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+    check_arity!(args, 1);
+    let mut msg = String::new();
+    if interp.is_string(args[0], &mut msg) {
+        Err(SchemeError::UserError(msg))
+    } else {
+        Err(SchemeError::TypeError(format!(
+            "Expected a String, but got a {}.", args[0].type_name()
+        )))
+    }
+}
+
+fn primitive_symbol_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+    check_arity!(args, 1);
+    Ok(Value::Boolean(interp.is_symbol(args[0]).is_some()))
+}
+
 
 fn primitive_add(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");

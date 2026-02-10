@@ -1,6 +1,15 @@
 
-(define cadr (lambda (l) (car (cdr l))))
-(define cddr (lambda (l) (cdr (cdr l))))
+
+(define! cadr (lambda (l) (car (cdr l))))
+(define! cddr (lambda (l) (cdr (cdr l))))
+
+(define-syntax define 
+    (lambda (name_and_params . body) 
+        (if (symbol? name_and_params)
+            `(define! ,name_and_params ,(car body))
+            `(define! ,(car name_and_params) (lambda ,(cdr name_and_params) ,@body)))
+    )
+)
 
 (define map
     (lambda (fn list) 
@@ -20,4 +29,3 @@
 (define-syntax unless 
     (lambda (cond . body) `(if (not ,cond) (begin ,@body)))
 )
-

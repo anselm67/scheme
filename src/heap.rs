@@ -75,7 +75,7 @@ impl HeapObject {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Keyword {
     If = 0,
-    Define = 1,
+    DefineBang = 1,
     Lambda = 2,
     Quote = 3,
     True = 4,
@@ -116,7 +116,7 @@ impl Keyword {
     fn from_id(id: GcId) -> Option<Keyword> {
         match id {
             0 => Some(Keyword::If),
-            1 => Some(Keyword::Define),
+            1 => Some(Keyword::DefineBang),
             2 => Some(Keyword::Lambda),
             3 => Some(Keyword::Quote),
             4 => Some(Keyword::True),
@@ -139,7 +139,7 @@ impl Keyword {
                     _ => Err(SchemeError::TypeError("if condition must evaluate to a boolean".to_string())),
                 }
             },
-            Keyword::Define => {
+            Keyword::DefineBang => {
                 check_arity!(args, 2);
                 let var_id = interp.to_object(args[0])?;
                 let value = args[1].eval(interp, env)?;
@@ -226,8 +226,8 @@ impl Heap {
         // TODO Cleanup indent & line breaks.
         let if_id =self.intern_symbol_to_gcid("if");
         assert!(if_id == Keyword::If as usize, "Keyword 'if' should have GcId 0");
-        let define_id = self.intern_symbol_to_gcid("define");
-        assert!(define_id == Keyword::Define as usize, "Keyword 'define' should have GcId 1");
+        let define_id = self.intern_symbol_to_gcid("define!");
+        assert!(define_id == Keyword::DefineBang as usize, "Keyword 'define!' should have GcId 1");
         let lambda_id = self.intern_symbol_to_gcid("lambda");
         assert!(lambda_id == Keyword::Lambda as usize, "Keyword 'lambda' should have GcId 2");
         let quote_id = self.intern_symbol_to_gcid("quote");

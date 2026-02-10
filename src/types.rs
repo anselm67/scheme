@@ -14,6 +14,7 @@ pub enum SchemeError {
     ArgCountError(String),
     OverflowError(String),
     FileNotFound(String),
+    UserError(String),
     // Other error types can be added here
 }
 
