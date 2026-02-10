@@ -41,6 +41,34 @@ impl HeapObject {
             Self::NaryClosure(_) => "n-Closure",
         }
     }
+
+    pub fn is_equal(&self, interp: &Interp, other: &HeapObject) -> bool {
+        match (self, other) {
+            (HeapObject::FreeSlot(_), HeapObject::FreeSlot(_)) => false,
+            (HeapObject::Pair(acar, acdr), HeapObject::Pair(bcar, bcdr)) => {
+                acar.is_equal(interp, bcar) && acdr.is_equal(interp, bcdr)
+            },
+            (HeapObject::List(v1), HeapObject::List(v2)) => {
+                v1.len() == v2.len() && v1.iter().zip(v2.iter())
+                    .all(|(a, b)| a.is_equal(interp, b))
+            },
+            (HeapObject::Symbol(a), HeapObject::Symbol(b)) => {
+                a == b
+            },
+            (HeapObject::String(a), HeapObject::String(b)) => a == b,
+            (HeapObject::Primitive(p1), HeapObject::Primitive(p2)) => {
+                std::ptr::eq(p1,p2)
+            },
+            (HeapObject::Closure(c1), HeapObject::Closure(c2)) => {
+                std::ptr::eq(c1, c2)
+            }
+            (HeapObject::NaryClosure(p1), HeapObject::NaryClosure(p2)) => {
+                std::ptr::eq(p1, p2)
+            },
+            _ => false,
+        }
+    }
+
 }
 
 #[repr(usize)]

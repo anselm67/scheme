@@ -1,6 +1,4 @@
 
-(debug "macros.scm")
-
 (define cadr (lambda (l) (car (cdr l))))
 (define cddr (lambda (l) (cdr (cdr l))))
 
@@ -10,7 +8,6 @@
             ()
             (cons (fn (car list)) (map fn (cdr list)))))
 )
-(debug "1. macros.scm")
  
 (define-syntax let
     (lambda (bindings . body)
@@ -24,4 +21,3 @@
     (lambda (cond . body) `(if (not ,cond) (begin ,@body)))
 )
 
-(debug "loaded.")

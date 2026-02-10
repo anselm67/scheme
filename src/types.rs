@@ -191,6 +191,25 @@ impl Value {
             Self::Unbound => "*unbound*",
         }
     }
+
+    pub fn is_equal(&self, interp: &Interp, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::Char(a), Value::Char(b)) => a == b,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b, 
+            (Value::Object(a), Value::Object(b)) => {
+                a == b || {
+                    let heap = interp.heap.borrow();
+                    let obja = heap.get(*a);
+                    let objb = heap.get(*b);
+                    obja.is_equal(interp, objb)
+                }
+            },
+            (Value::Nil, Value::Nil) => true,
+            (Value::Unbound, Value::Unbound) => false,
+            _ => false,
+        }
+    }
 }
 
 pub struct DisplayWrapper<'a> {

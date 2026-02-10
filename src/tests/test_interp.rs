@@ -193,3 +193,18 @@ fn test_read_eval_functional() {
     let interp = Interp::new();
     check_exprs(&interp, &inputs);
 }
+
+#[test]
+fn test_equality() {
+    let inputs = vec![
+        ("(eq? 1 1)", Value::Boolean(true)),
+        ("(eq? 1 2)", Value::Boolean(false)),
+        ("(eq? (list 1) (list 1))", Value::Boolean(false)),
+        ("(equal? \"a\" \"a\")", Value::Boolean(true)),
+        ("(eq? \"a\" \"b\")", Value::Boolean(false)),
+        ("(equal? (list 1) (list 1))", Value::Boolean(true)),
+        ("(equal? (cons 1 2) (cons 1 2))", Value::Boolean(true)),
+    ];
+    let interp = Interp::new();
+    check_exprs(&interp, &inputs);
+}

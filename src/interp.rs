@@ -72,6 +72,8 @@ impl Interp {
         self.define_primitive("eval", primitive_eval);
         self.define_primitive("apply", primitive_apply);
         self.define_primitive("expand", primitive_expand);
+        self.define_primitive("eq?", primitive_eq);
+        self.define_primitive("equal?", primitive_equal);
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
         // Initialize math primitive functions
@@ -463,6 +465,16 @@ fn primitive_apply(interp: &Interp, env: &Rc<RefCell<Env>>, args: &[Value])  -> 
 fn primitive_expand(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
     check_arity!(args, 1);
     interp.expand(args[0])
+}
+
+fn primitive_equal(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+    check_arity!(args, 2);
+    Ok(Value::Boolean(args[0].is_equal(interp, &args[1])))
+}
+
+fn primitive_eq(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+    check_arity!(args, 2);
+    Ok(Value::Boolean(args[0] == args[1]))
 }
 
 fn primitive_add(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
