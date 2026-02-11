@@ -11,7 +11,7 @@ use scheme::interp::{Interp};
 fn eval_expr(interp: &Interp, expr: Value) {
     let mut result = interp.expand(expr);
     if let Ok(expr) = result {
-        println!("expanded => {}", interp.display(expr));
+        // println!("expanded => {}", interp.display(expr));
         result = interp.eval(&interp.env, expr);
     }
     match result {

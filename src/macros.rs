@@ -33,9 +33,13 @@ macro_rules! extract_args {
         let mut iter = $args.into_iter();
         $(
             let $name = match iter.next().unwrap() {
-                Value::$variant(val) => val,
-                _ => return Err(SchemeError::TypeError(format!(
-                    "Invalid type {}.", stringify!($variant).to_string()))),
+                // If you call it with : Value, it matches this branch
+                // val if stringify!($variant) == "Any" => val,
+                // Otherwise it matches the specific variant
+                Value::$variant(v) => v,
+                other => return Err(SchemeError::TypeError(format!(
+                    "Expected {}, got {:?}", stringify!($variant), other
+                ))),
             };
         )*
     };

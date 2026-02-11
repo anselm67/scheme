@@ -178,9 +178,10 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn parse_hash(&mut self) -> Result<Value, SchemeError> {
+    fn parse_hash(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
         self.check_for(b'#')?;
         match self.next() {
+            Some(ch) if ch == b'(' => self.parse_vector(interp),
             Some(ch) if ch.to_ascii_lowercase() == b't' => Ok(Value::Boolean(true)),
             Some(ch) if ch.to_ascii_lowercase() == b'f' => Ok(Value::Boolean(false)),
             Some(ch) if ch == b'b' => self.parse_hash_number(2),
@@ -252,18 +253,17 @@ impl<R: Read> Parser<R> {
         ))
     }
 
-    // TODO resurect this and vectors.
-    // fn parse_vector(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
-    //     let mut list = Vec::new();
-    //     self.skip_whitespace();
-    //     while let Some(c) = self.peek() {
-    //         if c == b')' { break; }
-    //         list.push(self.read(interp)?);
-    //         self.skip_whitespace();
-    //     }
-    //     self.check_for(b')')?;
-    //     return Ok(interp.heap.borrow_mut().alloc_list(list));
-    // }
+    fn parse_vector(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
+        let mut list = Vec::new();
+        self.skip_whitespace();
+        while let Some(c) = self.peek() {
+            if c == b')' { break; }
+            list.push(self.read(interp)?);
+            self.skip_whitespace();
+        }
+        self.check_for(b')')?;
+        return Ok(interp.heap.borrow_mut().alloc_vector(&list));
+    }
 
     pub fn read(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
         self.skip_whitespace();
@@ -289,7 +289,7 @@ impl<R: Read> Parser<R> {
                 self.parse_symbol(interp)
             },
             Some(ch) if ch == b'#' => {
-                self.parse_hash()
+                self.parse_hash(interp)
             },
             Some(b'"') => {
                 return self.parse_string(interp)
@@ -364,11 +364,11 @@ mod tests {
             ("#\\return", Value::Char(13)),
             ("#\\space", Value::Char(32)),
             ("#\\A", Value::Char(65)),
-
         ];
+        let interp = Interp::new();
         for (text, value) in ok_inputs {
             let mut parser = Parser::new(text.as_bytes());
-            assert_eq!(Ok(value), parser.parse_hash())
+            assert_eq!(Ok(value), parser.parse_hash(&interp))
         }
     }
 

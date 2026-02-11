@@ -133,6 +133,17 @@ impl Interp {
         self.define_primitive("car", primitive_list_car);
         self.define_primitive("cdr", primitive_list_cdr);
 
+        // Init vector functions.
+        self.define_primitive("vector?", primitive_vector_p);
+        self.define_primitive("make-vector", primitive_make_vector);
+        self.define_primitive("vector", primitive_vector);
+        self.define_primitive("vector-length", primitive_vector_length);
+        self.define_primitive("vector-ref", primitive_vector_ref);
+        self.define_primitive("vector-set!", primitive_vector_set);
+        self.define_primitive("vector->list", primitive_vector_to_list);
+        self.define_primitive("list->vector", primitive_list_to_vector);
+        self.define_primitive("vector-fill!", primitive_vector_fill);
+
         // Initialize system primitive functions.
         self.define_primitive("debug", primitive_debug);
         self.define_primitive("load", primitive_load);
@@ -193,7 +204,7 @@ impl Interp {
         }
     }
 
-    pub fn as_integer(&self, value: Value) -> Result<i64, SchemeError> {
+    pub fn to_integer(&self, value: Value) -> Result<i64, SchemeError> {
         match value {
             Value::Number(Number::Int(i)) => Ok(i),
             _ => Err(SchemeError::TypeError(format!(
@@ -308,15 +319,6 @@ impl Interp {
             )))
         }
     }
-
-    // pub fn is_syntax(&self, value: Value) -> Option<Value> {
-    //     if let Value::Object(id) = value {
-    //         let env = self.env.borrow();
-    //         env.get_syntax(id)
-    //     } else {
-    //         None
-    //     }
-    // }
 
     pub fn quote(&self, obj: Value) -> Result<Value, SchemeError> {
         let value = &[
@@ -718,6 +720,138 @@ fn primitive_list_cdr(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
     Ok(cdr)
 }
 
+fn primitive_vector_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    check_arity!(args, 1);
+    if let Value::Object(id) = args[0] {
+        let heap = interp.heap.borrow();
+        let obj = heap.get(id);
+        if let HeapObject::Vector(_) = obj {
+            return Ok(Value::Boolean(true));
+        }
+    }
+    Ok(Value::Boolean(false))
+}
+
+fn primitive_make_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    check_min_arity!(args, 1);
+    let size = interp.to_integer(args[0])?;
+    let mut fill_value = Value::Number(Number::Int(0));
+    if args.len() == 2 {
+        fill_value = args[1];
+    }    
+    let mut heap = interp.heap.borrow_mut();
+    let data = vec![fill_value; size as usize];
+    Ok(heap.alloc_vector(&data)) 
+}
+
+fn primitive_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    let mut heap = interp.heap.borrow_mut();
+    Ok(heap.alloc_vector(args)) 
+}
+
+fn primitive_vector_length(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, id: Object);
+    let heap = interp.heap.borrow();
+    let obj = heap.get(*id); 
+    if let HeapObject::Vector(v) = obj {
+        Ok(Value::Number(Number::Int(v.data.borrow().len() as i64)))
+    } else {
+        Err(SchemeError::TypeError(format!(
+            "Expected a Vector, but got a {}.", args[0].type_name()
+        )))
+    }
+}
+
+fn primitive_vector_ref(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, id: Object, index: Number);
+    let heap = interp.heap.borrow();
+    let obj = heap.get(*id); 
+    if let HeapObject::Vector(v) = obj {
+        let data = v.data.borrow();
+        if let Number::Int(index) = index
+            && *index >= 0 && *index < data.len() as i64 {
+            Ok(data[*index as usize])
+        } else {
+            Err(SchemeError::IndexOutOfBounds(format!(
+                "Index {} is not within [0, {}[", index, data.len()
+            )))
+        }   
+    } else {
+        Err(SchemeError::TypeError(format!(
+            "Expected a Vector, but got a {}.", args[0].type_name()
+        )))
+    }
+}
+
+fn primitive_vector_set(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    // TODO Fix the extract_args! macro so it can take an unspecified Value.
+    check_arity!(args, 3);
+    let vector_id = interp.to_object(args[0])?;
+    let index = interp.to_integer(args[1])?;
+    let heap = interp.heap.borrow();
+    let obj = heap.get(vector_id); 
+    if let HeapObject::Vector(v) = obj {
+        let mut data = v.data.borrow_mut();
+        if index >= 0 && index < data.len() as i64 {
+            data[index as usize] = args[2];
+            Ok(args[2])
+        } else {
+            Err(SchemeError::IndexOutOfBounds(format!(
+                "Index {} is not within [0, {}[", index, data.len()
+            )))
+        }   
+    } else {
+        Err(SchemeError::TypeError(format!(
+            "Expected a Vector, but got a {}.", args[0].type_name()
+        )))
+    }
+}
+
+fn primitive_vector_to_list(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, id: Object);
+    let obj ={
+        let heap = interp.heap.borrow();
+        heap.get(*id).clone()
+    };
+    if let HeapObject::Vector(v) = obj {
+        let mut heap = interp.heap.borrow_mut();
+        let data = v.data.borrow();
+        Ok(heap.alloc_list(&data))
+    } else {
+        Err(SchemeError::TypeError(format!(
+            "Expected a Vector, but got a {}.", args[0].type_name()
+        )))
+    }
+}
+
+fn primitive_list_to_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, _id: Object);
+    let items = interp.fold_list(
+        args[0], vec![], |mut acc, item| {
+            acc.push(item);
+            Ok(acc)
+        }
+    )?;
+    let mut heap = interp.heap.borrow_mut();
+    Ok(heap.alloc_vector(&items))
+}
+
+fn primitive_vector_fill(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    check_arity!(args, 2);
+    let vector_id = interp.to_object(args[0])?;
+    let heap = interp.heap.borrow();
+    let obj = heap.get(vector_id); 
+    if let HeapObject::Vector(v) = obj {
+        let mut data = v.data.borrow_mut();
+        data.fill(args[1]);
+        Ok(args[1])
+    } else {
+        Err(SchemeError::TypeError(format!(
+            "Expected a Vector, but got a {}.", args[0].type_name()
+        )))
+    }
+}
+
 fn primitive_char_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
     check_arity!(args, 1);
     Ok(Value::Boolean(interp.is_char(args[0]).is_some()))
@@ -755,7 +889,7 @@ fn primitive_char_to_integer(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[
 
 fn primitive_integer_to_char(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
     check_arity!(args, 1);
-    let byte = interp.as_integer(args[0])?;
+    let byte = interp.to_integer(args[0])?;
     Ok(Value::Char(byte as u8))
 }
 

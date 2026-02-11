@@ -15,10 +15,15 @@ pub struct Closure {
 }
 
 #[derive(Clone)]
+pub struct Vector {
+    pub data: RefCell<Vec<Value>>,
+}
+
+#[derive(Clone)]
 pub enum HeapObject {
     FreeSlot(GcId),
     Pair(Value, Value),
-    List(Vec<Value>),
+    Vector(Vector),
     Symbol(String),
     String(String),
     Primitive(PrimitiveFn),
@@ -33,7 +38,7 @@ impl HeapObject {
         match self {
             Self::FreeSlot(_) => "FreeSlot",
             Self::Pair(..) => "Pair",
-            Self::List(_) => "List",
+            Self::Vector(_) => "Vector",
             Self::Symbol(_) => "Symbol",
             Self::String(_) => "String",
             Self::Primitive(_) => "Primitive",
@@ -48,8 +53,10 @@ impl HeapObject {
             (HeapObject::Pair(acar, acdr), HeapObject::Pair(bcar, bcdr)) => {
                 acar.is_equal(interp, bcar) && acdr.is_equal(interp, bcdr)
             },
-            (HeapObject::List(v1), HeapObject::List(v2)) => {
-                v1.len() == v2.len() && v1.iter().zip(v2.iter())
+            (HeapObject::Vector(v1), HeapObject::Vector(v2)) => {
+                let d1 = v1.data.borrow();
+                let d2 = v2.data.borrow();
+                d1.len() == d2.len() && d1.iter().zip(d2.iter())
                     .all(|(a, b)| a.is_equal(interp, b))
             },
             (HeapObject::Symbol(a), HeapObject::Symbol(b)) => {
@@ -339,6 +346,12 @@ impl Heap {
         Value::Object(id)
     }
 
+    pub fn alloc_vector(&mut self, items: &[Value]) -> Value {
+        let id: GcId = self.objects.len();
+        self.objects.push(HeapObject::Vector(Vector { data: RefCell::new(items.to_vec()) }));
+        Value::Object(id)
+    }
+    
 }
 pub trait Apply {
     fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) 
@@ -443,24 +456,6 @@ impl SchemeObject for GcId {
                     func.apply(interp, env, args?)
                 }
             },
-            HeapObject::List(elements) => {
-                match elements.as_slice() {
-                    [] => Ok(Value::Nil),
-                    [func, rest @ ..] => {
-                        if let Value::Object(func_id) = func 
-                            && let Some(keyword) = Keyword::from_id(*func_id) {
-                                // Special form handling
-                                Keyword::eval(interp, env, keyword, rest)
-                        } else {
-                            // Fallback if not a pecial form.
-                            let args = rest.iter()
-                                .map(|arg| arg.eval(interp, env))
-                                .collect::<Result<Vec<Value>, SchemeError>>()?;
-                            func.eval(interp, env)?.apply(interp, env, args)
-                        }
-                    }    
-                }
-            },
             HeapObject::Symbol(name) => {
                 match env.borrow().lookup(id) {
                     Some(value) => return Ok(value),
@@ -504,9 +499,10 @@ impl SchemeObject for GcId {
                 }
                 write!(f, ")")
             },
-            HeapObject::List(elements) => {
-                write!(f, "(")?;
-                for (i, e) in elements.iter().enumerate() {
+            HeapObject::Vector(v) => {
+                let items = v.data.borrow();
+                write!(f, "#(")?;
+                for (i, e) in items.iter().enumerate() {
                     if i > 0 {
                         write!(f, " ")?; // Add a space before every element EXCEPT the first
                     }
