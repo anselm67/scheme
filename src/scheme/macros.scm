@@ -11,16 +11,15 @@
     )
 )
 
-(define map
-    (lambda (fn list) 
-        (if (null? list) 
-            ()
-            (cons (fn (car list)) (map fn (cdr list)))))
+(define (map fn list) 
+    (if (null? list) 
+        ()
+        (cons (fn (car list)) (map fn (cdr list))))
 )
+
  
 (define-syntax let
     (lambda (bindings . body)
-        (debug bindings)
         `((lambda ,(map car bindings) ,@body) ,@(map cadr bindings)))
 )
 
@@ -28,4 +27,14 @@
 
 (define-syntax unless 
     (lambda (cond . body) `(if (not ,cond) (begin ,@body)))
+)
+
+(define-syntax or 
+    (lambda exprs
+        (if (null? exprs)
+            #f
+            `(let ((first ,(car exprs)))
+                (if first first (or ,@(cdr exprs))))
+        )
+    )
 )

@@ -252,6 +252,7 @@ impl<R: Read> Parser<R> {
         ))
     }
 
+    // TODO resurect this and vectors.
     // fn parse_vector(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
     //     let mut list = Vec::new();
     //     self.skip_whitespace();

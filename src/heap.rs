@@ -134,9 +134,8 @@ impl Keyword {
                 check_arity!(args, 3);
                 let condition = args[0].eval(interp, env)?;
                 match condition {
-                    Value::Boolean(true) => args[1].eval(interp, env),
                     Value::Boolean(false) => args[2].eval(interp, env),
-                    _ => Err(SchemeError::TypeError("if condition must evaluate to a boolean".to_string())),
+                    _ => args[1].eval(interp, env),
                 }
             },
             Keyword::DefineBang => {

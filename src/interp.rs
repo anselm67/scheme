@@ -396,7 +396,6 @@ impl Interp {
     }
 
     fn expand_macro(&self, func: Value, args: Value) -> Result<Value, SchemeError> {
-        dbg!(format!("expand_macro {}", self.display(func)));
         let args = self.fold_list(
             args,
             Vec::new(), 
@@ -404,28 +403,31 @@ impl Interp {
                 acc.push(self.expand(arg)?);
                 Ok(acc)
             });
-        func.apply(self, &self.env, args?)
+        let expansion = func.apply(self, &self.env, args?)?;
+        Ok(expansion)
     }
 
     pub fn expand(&self, expr: Value) -> Result<Value, SchemeError> {
-        dbg!(format!("macro {}", self.display(expr)));
         if let Some((car, cdr)) = self.is_pair(expr) {
             if let Value::Object(id) = car
                 && let Some(func) = self.env.borrow().macros.get(&id) 
             {
-                self.expand_macro(*func, cdr)
+                Ok(self.expand(self.expand_macro(*func, cdr)?)?)
             } else {
                 let mut updated = false;
                 let items = self.fold_list(
-                    cdr, vec![car], |mut acc, item| {
+                    expr, vec![], |mut acc, item| {
                         let expansion = self.expand(item)?;
                         updated = updated || expansion != item;
-                        acc.push(item);
+                        acc.push(expansion);
                         Ok(acc)
                     });
                 if updated {
-                    let mut heap = self.heap.borrow_mut();
-                    Ok(heap.alloc_list(&items?))
+                    let expansion = {
+                        let mut heap = self.heap.borrow_mut();
+                        heap.alloc_list(&items?).clone()
+                    };
+                    Ok(expansion)
                 } else {
                     Ok(expr)
                 }
