@@ -59,11 +59,19 @@ impl Env {
     }
 
     pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
+        // TODO If this env was already marked, skip this.
         loop {
+            // Marks the macros and their definitions.
+            for (id, value) in self.macros.iter() {
+                id.mark(interp, marks);
+                value.mark(interp, marks);
+            }
+            // Marks the symbols and their values.
             for (id, value) in self.bindings.iter() {
                 id.mark(interp, marks);
                 value.mark(interp, marks);
             }
+            // Marks the parent environment.
             match &self.parent {
                 Some(parent_env) => {
                     let outer = parent_env.borrow();

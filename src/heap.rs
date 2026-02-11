@@ -303,7 +303,7 @@ impl Heap {
         &self.objects[id]
     }
 
-    fn get_mut(&mut self, id: GcId) -> &mut HeapObject {
+    pub fn get_mut(&mut self, id: GcId) -> &mut HeapObject {
         &mut self.objects[id]
     }
 
@@ -424,6 +424,21 @@ impl Heap {
         count
     }
 
+    pub fn is_string(&self, id: GcId) -> bool {
+        matches!(self.objects[id], HeapObject::String(_))
+    }
+
+    pub fn string_length(&self, id: GcId) -> Option<usize> {
+        if let HeapObject::String(s) = &self.objects[id] {
+            Some(s.len())
+        } else {
+            None
+        }
+    }
+
+    pub fn is_vector(&self, id: GcId) -> bool {
+        matches!(self.objects[id], HeapObject::Vector(_))
+    }
 }
 pub trait Apply {
     fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) 

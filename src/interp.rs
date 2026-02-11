@@ -134,7 +134,7 @@ impl Interp {
         self.define_primitive("car", primitive_list_car);
         self.define_primitive("cdr", primitive_list_cdr);
 
-        // Init vector functions.
+        // Initializes vector functions.
         self.define_primitive("vector?", primitive_vector_p);
         self.define_primitive("make-vector", primitive_make_vector);
         self.define_primitive("vector", primitive_vector);
@@ -144,6 +144,32 @@ impl Interp {
         self.define_primitive("vector->list", primitive_vector_to_list);
         self.define_primitive("list->vector", primitive_list_to_vector);
         self.define_primitive("vector-fill!", primitive_vector_fill);
+
+        // Initializes string functions.
+        self.define_primitive("string?", primitive_string_p);
+        self.define_primitive("make-string", primitive_make_string);
+        self.define_primitive("string", primitive_string);
+        self.define_primitive("string->list", primitive_string_to_list);
+        self.define_primitive("list->string", primitive_list_to_string);
+        self.define_primitive("string-length", primitive_string_length);
+        self.define_primitive("string-ref", primitive_string_ref);
+        self.define_primitive("string-set!", primitive_string_set);
+        self.define_primitive("string=?", primitive_string_eq);
+        self.define_primitive("string<?", primitive_string_lt);
+        self.define_primitive("string<=?", primitive_string_lte);
+        self.define_primitive("string>?", primitive_string_gt);
+        self.define_primitive("string>=?", primitive_string_gte);
+        self.define_primitive("string-ci=?", primitive_string_ci_eq);
+        self.define_primitive("string-ci<?", primitive_string_ci_lt);
+        self.define_primitive("string-ci<=?", primitive_string_ci_lte);
+        self.define_primitive("string-ci>?", primitive_string_ci_gt);
+        self.define_primitive("string-ci>=?", primitive_string_ci_gte);
+
+        // TODO
+        // self.define_primitive("string-append", primitive_string);
+        // self.define_primitive("substring", primitive_string);
+        // self.define_primitive("string-copy", primitive_string);
+        // self.define_primitive("string-fill!", primitive_string);
 
         // Initialize system primitive functions.
         self.define_primitive("gc", primitive_gc);
@@ -237,6 +263,15 @@ impl Interp {
         }
     }
 
+    pub fn to_char(&self, value: Value) -> Result<char, SchemeError> {
+        match value {
+            Value::Char(ch) => Ok(ch as char),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected a Char got a {}", value.type_name()
+            ))),
+        }
+    }
+
     pub fn is_string(&self, value: Value, buf: &mut String) -> bool {
         if let Some(id) = self.is_object(value) {
             let heap = self.heap.borrow();
@@ -249,13 +284,13 @@ impl Interp {
         return false;
     }
 
-    pub fn to_string(&self, value: Value, buf: &mut String) -> Result<bool, SchemeError> {
+    pub fn to_string(&self, value: Value, buf: &mut String) -> Result<Value, SchemeError> {
         let id = self.to_object(value)?;
         let heap = self.heap.borrow();
         if let HeapObject::String(s) = heap.get(id) {
             buf.clear();
             buf.push_str(s);
-            Ok(true)
+            Ok(value)
         } else {
             Err(SchemeError::TypeError(format!(
                 "Expected a String, but got a {}.", value.type_name())
@@ -726,13 +761,10 @@ fn primitive_list_cdr(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
 fn primitive_vector_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
     check_arity!(args, 1);
     if let Value::Object(id) = args[0] {
-        let heap = interp.heap.borrow();
-        let obj = heap.get(id);
-        if let HeapObject::Vector(_) = obj {
-            return Ok(Value::Boolean(true));
-        }
+        Ok(Value::Boolean(interp.heap.borrow().is_vector(id)))
+    } else {
+        Ok(Value::Boolean(false))
     }
-    Ok(Value::Boolean(false))
 }
 
 fn primitive_make_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
@@ -956,6 +988,239 @@ fn primitive_char_ci_gte(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Valu
     Ok(Value::Boolean(ch1.to_ascii_lowercase() >= ch2.to_ascii_lowercase()))
 }
 
+fn primitive_string_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    check_arity!(args, 1);
+    if let Some(id) = interp.is_object(args[0]) {
+        Ok(Value::Boolean(interp.heap.borrow().is_string(id)))
+    } else {
+        Ok(Value::Boolean(false))
+    }
+
+}
+
+fn primitive_make_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    let mut fill_char = 32 as char;
+    check_min_arity!(args, 1);
+    let count = interp.to_integer(args[0])?;
+    if args.len() > 1 {
+        fill_char = interp.to_char(args[1])?;
+    }
+    Ok(interp.heap.borrow_mut().alloc_string(
+        fill_char.to_string().repeat(count as usize))
+    )
+}
+
+fn primitive_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    let mut buf = String::new();
+    for arg in args {
+        let ch = interp.to_char(*arg)?;
+        buf.push(ch);
+    }
+    Ok(interp.heap.borrow_mut().alloc_string(buf))
+}
+
+fn primitive_string_to_list(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, _id: Object);
+    let mut buf = String::new();
+    let _ = interp.to_string(args[0], &mut buf)?;
+    let chars:Vec<Value> = buf.chars().map(
+        |ch| Value::Char(ch as u8)
+    ).collect();
+    Ok(interp.heap.borrow_mut().alloc_list(&chars))
+}
+
+fn primitive_list_to_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, _id: Object);
+    let chars = interp.fold_list(
+        args[0], String::new(), |mut acc, item| {
+            let ch = interp.to_char(item)?;
+            acc.push(ch);
+            Ok(acc)
+        })?;
+    Ok(interp.heap.borrow_mut().alloc_string(&chars))
+}
+
+fn primitive_string_length(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 1, id: Object);
+    if let Some(length) = interp.heap.borrow().string_length(*id) {
+        Ok(Value::Number(Number::Int(length as i64)))
+    } else {
+        Err(SchemeError::TypeError(format!(
+            "Expected a String, but got a {}", args[0].type_name()
+        )))
+    }
+}
+
+fn primitive_string_ref(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, id: Object, _index: Number);
+    if let HeapObject::String(string) = interp.heap.borrow().get(*id) {
+        let index = interp.to_integer(args[1])?;
+        if index >= 0 && index < (string.len() as i64) 
+            && let Some(ch) = string.chars().nth(index as usize) {
+            return Ok(Value::Char(ch as u8));
+        } else {
+            Err(SchemeError::IndexOutOfBounds(format!(
+                "Index {} is not in 0..{}", index, string.len()
+            )))
+        }
+    } else {
+        Err(SchemeError::TypeError(format!(
+            "Expected a String, but got a {}", args[0].type_name()
+        )))
+    }
+}
+
+fn primitive_string_set(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 3, id: Object, _index: Number, value: Char);
+    let mut heap = interp.heap.borrow_mut();
+    if let HeapObject::String(string) = &mut heap.get_mut(*id) {
+        let index = interp.to_integer(args[1])?;
+        if index >= 0 && index < (string.len() as i64) {
+            // TODO This is really horrible!
+            string.remove(index as usize);
+            string.insert(index as usize, *value as char);
+            return Ok(args[0]);
+        } else {
+            Err(SchemeError::IndexOutOfBounds(format!(
+                "Index {} is not in 0..{}", index, string.len()
+            )))
+        }
+    } else {
+        Err(SchemeError::TypeError(format!(
+            "Expected a String, but got a {}", args[0].type_name()
+        )))
+    }
+}
+
+fn primitive_string_eq(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa == sb))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+
+fn primitive_string_lt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa < sb))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+
+fn primitive_string_gt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa > sb))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+
+fn primitive_string_lte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa <= sb))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+
+fn primitive_string_gte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa >= sb))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+
+fn primitive_string_ci_eq(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa.to_ascii_lowercase() == sb.to_ascii_lowercase()))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+
+fn primitive_string_ci_lt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa.to_ascii_lowercase() < sb.to_ascii_lowercase()))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+fn primitive_string_ci_lte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa.to_ascii_lowercase() <= sb.to_ascii_lowercase()))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+fn primitive_string_ci_gt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa.to_ascii_lowercase() > sb.to_ascii_lowercase()))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+fn primitive_string_ci_gte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+    extract_args!(args, 2, aid: Object, bid: Object);
+    let heap = interp.heap.borrow();
+    match (heap.get(*aid), heap.get(*bid)) {
+        (HeapObject::String(sa), HeapObject::String(sb)) => {
+            Ok(Value::Boolean(sa.to_ascii_lowercase() >= sb.to_ascii_lowercase()))
+        },
+        (xa, xb) => Err(SchemeError::TypeError(format!(
+            "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
+        )))
+    }
+}
+
+
+
 fn primitive_gc(interp: &Interp, env: &Rc<RefCell<Env>>, _args: &[Value]) -> Result<Value, SchemeError> {
     // Marks all reachable objects from the environment and the heap's symbols.
     let len = interp.heap.borrow().len();
@@ -986,6 +1251,7 @@ fn primitive_debug(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> 
 fn primitive_load(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
     -> Result<Value, SchemeError> 
 {
+    // TODO SyntaxError don't seem to come all theway back here.
     let mut retval = Value::Nil;
     let mut filename = String::new();
     for arg in args {

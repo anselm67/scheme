@@ -38,3 +38,8 @@
         )
     )
 )
+
+(define (assert-equal object value)
+    (if (equal? object value) #t (error "test failed."))
+)
+
