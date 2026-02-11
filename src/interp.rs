@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use crate::env::Env;
 use crate::heap::{Apply, HeapObject, Keyword};
+use crate::markset::MarkSet;
 use crate::parser::Parser;
 use crate::{all_of_type, check_arity, check_min_arity, extract_args, heap};
 use crate::types::{DisplayWrapper, GcId, Number, SchemeError, SchemeObject, Value};
@@ -30,7 +31,7 @@ impl Interp {
             parent: None,
         };
         let env_handle = Rc::new(RefCell::new(global_env));
-        let heap_handle = RefCell::new(heap::Heap::new());
+        let heap_handle = RefCell::new(heap::Heap::new(1024));
         let (append, list, quasiquote, unquote, unquote_splicing) = {
             let mut heap = heap_handle.borrow_mut();
             (
@@ -145,6 +146,8 @@ impl Interp {
         self.define_primitive("vector-fill!", primitive_vector_fill);
 
         // Initialize system primitive functions.
+        self.define_primitive("gc", primitive_gc);
+        self.define_primitive("heap-stats", primitive_heap_stats);
         self.define_primitive("debug", primitive_debug);
         self.define_primitive("load", primitive_load);
         self.define_primitive("quit", primitive_quit);
@@ -953,6 +956,22 @@ fn primitive_char_ci_gte(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Valu
     Ok(Value::Boolean(ch1.to_ascii_lowercase() >= ch2.to_ascii_lowercase()))
 }
 
+fn primitive_gc(interp: &Interp, env: &Rc<RefCell<Env>>, _args: &[Value]) -> Result<Value, SchemeError> {
+    // Marks all reachable objects from the environment and the heap's symbols.
+    let len = interp.heap.borrow().len();
+    let mut marks = MarkSet::new(len);
+    env.borrow().mark(interp, &mut marks);
+    interp.heap.borrow().mark(interp, &mut marks);
+    
+    // Collects all unreachable objects lying in the heap.
+    let mut heap = interp.heap.borrow_mut();
+    let collected = heap.collect(&marks);
+
+    println!("gc: marked {} /{} objects, collected {}.", marks.count(), len, collected);   
+
+    Ok(Value::Nil)
+}
+
 fn primitive_debug(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
     for (i, arg) in args.iter().enumerate() {
         if i > 0 {
@@ -964,7 +983,9 @@ fn primitive_debug(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> 
     Ok(Value::Boolean(true))
 }
 
-fn primitive_load(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_load(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
     let mut retval = Value::Nil;
     let mut filename = String::new();
     for arg in args {
@@ -972,4 +993,16 @@ fn primitive_load(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> R
         retval = interp.load(&filename)?;
     }
     Ok(retval)
+}
+
+fn primitive_heap_stats(interp: &Interp, _env: &Rc<RefCell<Env>>, _args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
+    let stats = interp.heap.borrow().stats();
+    println!("Total slots: {}", stats.total_slots);
+    println!(" Live slots: {}", stats.live_slots);
+    println!(" Free slots: {}", stats.free_slots);
+    println!("  Next slot: {}", stats.next_slot);
+    println!("    Symbols: {}", stats.symbol_count);
+    Ok(Value::Nil)
 }

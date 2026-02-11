@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::types::{GcId, SchemeError, Value};
+use crate::{interp::Interp, markset::MarkSet, types::{GcId, SchemeError, SchemeObject, Value}};
 
 
 pub struct Env {
@@ -54,6 +54,22 @@ impl Env {
             match &self.parent {
                 Some(parent_env) => parent_env.borrow().lookup(key),
                 None => None,
+            }
+        }
+    }
+
+    pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
+        loop {
+            for (id, value) in self.bindings.iter() {
+                id.mark(interp, marks);
+                value.mark(interp, marks);
+            }
+            match &self.parent {
+                Some(parent_env) => {
+                    let outer = parent_env.borrow();
+                    outer.mark(interp, marks);
+                },
+                None => return,
             }
         }
     }

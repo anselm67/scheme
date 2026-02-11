@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 use crate::{
-    check_arity, env::Env, interp::Interp, types::{GcId, SchemeError, SchemeObject, Value}
+    check_arity, env::Env, interp::Interp, markset::MarkSet, types::{GcId, SchemeError, SchemeObject, Value}
 };
 
 pub type PrimitiveFn = fn(&Interp, env: &Rc<RefCell<Env>>, &[Value]) -> Result<Value, SchemeError>;
@@ -214,18 +214,63 @@ impl Keyword {
 pub struct Heap {
     objects: Vec<HeapObject>,
     symbols: HashMap<String, GcId>,
+    size: usize,
+    free_slot: usize
+}
+
+pub struct HeapStats {
+    pub total_slots: usize,
+    pub live_slots: usize,
+    pub next_slot: usize,
+    pub free_slots: usize,
+    pub symbol_count: usize,
 }
 
 impl Heap {
     
-    pub fn new() -> Self {
+    pub fn new(size: usize) -> Self {
         let mut heap = Self {
-            objects: Vec::new(),
+            objects: vec![HeapObject::FreeSlot(0); size],
             symbols: HashMap::new(),
+            size: size,
+            free_slot: 0,
         };
+        // Chain all slots into free slots.
+        // FreeSlot(i) if i >= size means we've reached the end.
+        for i in 0..size {
+            heap.objects[i] = HeapObject::FreeSlot(i+1);
+        }
         // Pre-intern keywords
         heap.intern_special_keywwords();
         heap
+    }
+
+    fn next_id(&mut self) -> GcId {
+        if self.free_slot < self.size {
+            let available_id = self.free_slot;
+            if let HeapObject::FreeSlot(free_slot) = self.objects[self.free_slot] {
+                self.free_slot = free_slot;
+            } else {
+                panic!("Free slot {} is occupied by a {} !", 
+                    self.free_slot, self.objects[self.free_slot].type_name())
+            }
+            return available_id;
+        }
+        // TODO Run the (gc) to get some space.
+        panic!("No more memory !");
+    }
+
+    pub fn stats(&self) -> HeapStats {
+        let free_count = self.objects.iter()
+            .filter(|slot| matches!(slot, HeapObject::FreeSlot(_)))
+            .count();
+        HeapStats {
+            total_slots: self.objects.len(),
+            live_slots: self.size - free_count,
+            next_slot: self.free_slot,
+            free_slots: free_count,
+            symbol_count: self.symbols.len()
+        }
     }
 
     fn intern_special_keywwords(&mut self) {
@@ -250,6 +295,10 @@ impl Heap {
         assert!(define_syntax_id == Keyword::DefineSyntax as usize, "Keyword 'define-syntax' should have GcId 8");
     }
 
+    pub fn len(&self) -> usize {
+        self.objects.len()
+    }
+
     pub fn get(&self, id: GcId) -> &HeapObject {
         &self.objects[id]
     }
@@ -262,8 +311,8 @@ impl Heap {
         if let Some(&id) = self.symbols.get(name) {
             return id;
         } else {
-            let id: GcId = self.objects.len();
-            self.objects.push(HeapObject::Symbol(name.to_string()));
+            let id: GcId = self.next_id();
+            self.objects[id] = HeapObject::Symbol(name.to_string());
             self.symbols.insert(name.to_string(), id);
             id
         }
@@ -274,8 +323,8 @@ impl Heap {
     }
 
     pub fn alloc_pair(&mut self, car: Value, cdr: Value) -> Value {
-        let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::Pair(car, cdr));
+        let id: GcId = self.next_id();
+        self.objects[id] = HeapObject::Pair(car, cdr);
         Value::Object(id)
     }
 
@@ -323,35 +372,58 @@ impl Heap {
     }
 
     pub fn alloc_string(&mut self, s: impl Into<String>) -> Value {
-        let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::String(s.into()));
+        let id: GcId = self.next_id();
+        self.objects[id] = HeapObject::String(s.into());
         Value::Object(id)
     }
 
     pub fn alloc_primitive(&mut self, func: PrimitiveFn) -> Value {
-        let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::Primitive(func));
+        let id: GcId = self.next_id();
+        self.objects[id] = HeapObject::Primitive(func);
         Value::Object(id)
     }
 
     pub fn alloc_closure(&mut self, closure: Closure) -> Value {
-        let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::Closure(Box::new(closure)));
+        let id: GcId = self.next_id();
+        self.objects[id] = HeapObject::Closure(Box::new(closure));
         Value::Object(id)
     }
 
     pub fn alloc_nary_closure(&mut self, closure: Closure) -> Value {
-        let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::NaryClosure(Box::new(closure)));
+        let id: GcId = self.next_id();
+        self.objects[id] = HeapObject::NaryClosure(Box::new(closure));
         Value::Object(id)
     }
 
     pub fn alloc_vector(&mut self, items: &[Value]) -> Value {
-        let id: GcId = self.objects.len();
-        self.objects.push(HeapObject::Vector(Vector { data: RefCell::new(items.to_vec()) }));
+        let id: GcId = self.next_id();
+        self.objects[id] = HeapObject::Vector(Vector { data: RefCell::new(items.to_vec()) });
         Value::Object(id)
     }
     
+    pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
+        for id in self.symbols.values() {
+            id.mark(interp, marks);
+        }
+    }
+
+    fn make_free_slot(&mut self, id: GcId) {
+        self.objects[id] = HeapObject::FreeSlot(self.free_slot);
+        self.free_slot = id;
+    }
+
+    pub fn collect(&mut self, marks: &MarkSet) -> usize {
+        let mut count = 0;
+        // Display the objects we'd like to kill:
+        for id in 0..marks.len() {
+            if ! marks.is_marked(id) && ! matches!(self.objects[id], HeapObject::FreeSlot(_)) {
+                self.make_free_slot(id);
+                count += 1;
+            }
+        }
+        count
+    }
+
 }
 pub trait Apply {
     fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) 
@@ -410,6 +482,9 @@ impl Apply for Value {
                 Ok(result)
             },
             HeapObject::Primitive(pr) => pr(interp, env, &args),
+            HeapObject::FreeSlot(_) => {
+                panic!("Attempt to apply a FreeSlot!");
+            }
             any => Err(SchemeError::TypeError(format!(
                 "Attempted to apply a non-primitive object with type {}", any.type_name()
             ))),
@@ -464,9 +539,7 @@ impl SchemeObject for GcId {
                     },
                 }
             },
-            HeapObject::FreeSlot(_) => Err(SchemeError::ImplementationError(format!(
-                "Request to evaluate FreeSlot at {}", id
-            ))),
+            HeapObject::FreeSlot(_) => panic!("Request to evaluate FreeSlot at {}", id),
             _ => Ok(Value::Object(id))
         }
     }
@@ -515,7 +588,46 @@ impl SchemeObject for GcId {
             HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
-            HeapObject::FreeSlot(_) => write!(f, "*** FREE SLOT ***")
+            HeapObject::FreeSlot(id) => panic!("Attempt to render free slot {}", id),
+        }
+    }
+
+    fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
+        // If we've already been marked, no need to walk through again.
+        let id = *self;
+        if ! marks.mark(id) {
+            return;
+        }
+        let obj = {
+            let heap = interp.heap.borrow();
+            heap.get(id).clone()
+        };
+        match obj {
+            HeapObject::Pair(car, cdr) => {
+                car.mark(interp, marks);
+                cdr.mark(interp, marks);
+            },
+            HeapObject::Vector(v) => {
+                let data = v.data.borrow();
+                for item in data.iter() {
+                    item.mark(interp, marks);
+                }
+            },
+            HeapObject::Symbol(_) => {},
+            HeapObject::String(_) => {},
+            HeapObject::Primitive(_) => {},
+            HeapObject::Closure(closure) | HeapObject::NaryClosure(closure) => {
+                for id in closure.params {
+                    id.mark(interp, marks);
+                }
+                for expr in closure.body {
+                    expr.mark(interp, marks);
+                }
+                closure.env.borrow().mark(interp, marks);
+            },
+            _ => {
+                panic!("Request to mark a {}.", obj.type_name());
+            }
         }
     }
 }
@@ -526,7 +638,7 @@ mod tests {
 
     #[test]
     fn test_alloc_pair() {
-        let mut heap = Heap::new();
+        let mut heap = Heap::new(1024);
         let pair = heap.alloc_list(&[Value::Boolean(true)]);
         assert!(matches!(pair, Value::Object(_)));
         if let Value::Object(id) = pair {
@@ -541,7 +653,7 @@ mod tests {
 
     #[test]
      fn test_alloc_pair_with_cdr() {
-        let mut heap = Heap::new();
+        let mut heap = Heap::new(1024);
         let pair = heap.alloc_list_with_cdr(
             &[Value::Boolean(true)], Value::Boolean(false)
         );

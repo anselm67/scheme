@@ -1,6 +1,6 @@
 use std::{cell::RefCell, cmp::Ordering, convert::TryFrom, fmt, rc::Rc};
 
-use crate::{env::Env, interp::Interp};
+use crate::{env::Env, interp::Interp, markset::MarkSet};
 
 pub type GcId = usize;
 
@@ -23,6 +23,7 @@ pub trait SchemeObject {
     fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError>;
     fn is_false(&self) -> bool;
     fn write_to(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+    fn mark(&self, interp: &Interp, marks: &mut MarkSet);
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -265,5 +266,11 @@ impl SchemeObject for Value {
         }
     }
 
+    fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
+        match self {
+            Value::Object(id) => id.mark(interp, marks),
+            _ => (),
+        }
+    }
 }
 
