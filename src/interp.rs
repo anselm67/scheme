@@ -31,7 +31,7 @@ impl Interp {
             parent: None,
         };
         let env_handle = Rc::new(RefCell::new(global_env));
-        let heap_handle = RefCell::new(heap::Heap::new(1024));
+        let heap_handle = RefCell::new(heap::Heap::new(4096));
         let (append, list, quasiquote, unquote, unquote_splicing) = {
             let mut heap = heap_handle.borrow_mut();
             (

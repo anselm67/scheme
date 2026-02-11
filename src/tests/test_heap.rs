@@ -6,7 +6,7 @@ use crate::types::{Number, Value};
 #[test]
 fn test_intern_symbol() {
 
-    let mut heap = Heap::new();
+    let mut heap = Heap::new(128);
 
     let sym1 = heap.intern_symbol("test");
     let sym2 = heap.intern_symbol("test");
