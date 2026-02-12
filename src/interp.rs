@@ -497,7 +497,9 @@ impl Interp {
 
     pub fn expand(&self, expr: Value) -> Result<Value, SchemeError> {
         if let Some((car, cdr)) = self.is_pair(expr) {
-            if let Value::Object(id) = car
+            if let Value::Object(id) = car && id == 8 {
+                Ok(expr)
+            } else if let Value::Object(id) = car
                 && let Some(func) = self.env.borrow().macros.get(&id) 
             {
                 Ok(self.expand(self.expand_macro(*func, cdr)?)?)

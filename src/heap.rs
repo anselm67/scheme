@@ -147,16 +147,16 @@ impl Keyword {
             },
             Keyword::DefineBang => {
                 check_arity!(args, 2);
-                let var_id = interp.to_object(args[0])?;
+                let symbol = interp.to_object(args[0])?;
                 let value = args[1].eval(interp, env)?;
-                env.borrow_mut().define(var_id, value);
+                env.borrow_mut().define(symbol, value);
                 Ok(Value::Nil)
             },
             Keyword::DefineSyntax => {
                 check_arity!(args, 2);
-                let var_id = interp.to_symbol(args[0])?;
+                let symbol = interp.to_symbol(args[0])?;
                 let value = args[1].eval(interp, env)?;
-                env.borrow_mut().define_syntax(var_id, value);
+                env.borrow_mut().define_syntax(symbol, value);
                 Ok(Value::Nil)
             },
             Keyword::Lambda => {
