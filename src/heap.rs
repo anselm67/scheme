@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt, io::{BufRead, Write}, rc::Rc};
 
 use crate::{
     check_arity, env::Env, interp::Interp, markset::MarkSet, types::{GcId, SchemeError, SchemeObject, Value}
@@ -29,6 +29,8 @@ pub enum HeapObject {
     Primitive(PrimitiveFn),
     Closure(Box<Closure>),
     NaryClosure(Box<Closure>),
+    InputPort(Rc<RefCell<Option<Box<dyn BufRead>>>>),
+    OutputPort(Rc<RefCell<Option<Box<dyn Write>>>>),
     // Other heap-allocated object types can be added here
 }
 
@@ -44,6 +46,8 @@ impl HeapObject {
             Self::Primitive(_) => "Primitive",
             Self::Closure(_) => "Closure",
             Self::NaryClosure(_) => "n-Closure",
+            Self::InputPort(_) => "InputPort",
+            Self::OutputPort(_) => "OutputPort",
         }
     }
 
@@ -401,6 +405,14 @@ impl Heap {
         Value::Object(id)
     }
     
+    pub fn alloc_input_port(&mut self, input: Rc<RefCell<Option<Box<dyn BufRead>>>>) 
+        -> Value 
+    {
+        let id = self.next_id();
+        self.objects[id] = HeapObject::InputPort(input);
+        Value::Object(id)
+    }
+
     pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
         for id in self.symbols.values() {
             id.mark(interp, marks);
@@ -587,6 +599,8 @@ impl SchemeObject for GcId {
             HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
+            HeapObject::InputPort(_) => write!(f, "<input-port {}>", id),
+            HeapObject::OutputPort(_) => write!(f, "<output-port {}>", id),
             HeapObject::FreeSlot(id) => panic!("Attempt to render free slot {}", id),
         }
     }

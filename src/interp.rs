@@ -1,5 +1,7 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process;
 use std::rc::Rc;
@@ -168,6 +170,12 @@ impl Interp {
         self.define_primitive("substring", primitive_substring);
         self.define_primitive("string-copy", primitive_string_copy);
         self.define_primitive("string-fill!", primitive_string_fill);
+
+        // IO primitive functions.
+        self.define_primitive("open-input-file", primitive_open_input_file);
+        self.define_primitive("close-input-port", primitive_close_input_port);
+        self.define_primitive("read-char", primitive_read_char);
+        self.define_primitive("eof-object?", primitive_eof_object);
 
         // Initialize system primitive functions.
         self.define_primitive("gc", primitive_gc);
@@ -341,9 +349,27 @@ impl Interp {
             }
         }).map_err(|_| {
             SchemeError::TypeError(format!(
-                "Expected a String, but got a {}", value.type_name()
+                "Expected a Vector, but got a {}", value.type_name()
             ))
         })
+    }
+
+    pub fn to_input_port(&self, value: Value) 
+        -> Result<Ref<'_,Rc<RefCell<Option<Box<dyn BufRead>>>>>, SchemeError> 
+    {
+        let id = self.to_object(value)?;
+        let heap = self.heap.borrow();
+        Ref::filter_map(heap, |h| {
+            if let HeapObject::InputPort(input) = h.get(id) {
+                Some(input)
+            } else {
+                None
+            }
+        }).map_err(|_| {
+            SchemeError::TypeError(format!(
+                "Expected an InputPort, but got a {}", value.type_name()
+            ))
+        })        
     }
 
     pub fn is_object(&self, value: Value) -> Option<GcId> {
@@ -1257,7 +1283,72 @@ fn primitive_string_fill(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value
     Ok(interp.heap.borrow_mut().alloc_string(string))
 }
 
-fn primitive_gc(interp: &Interp, env: &Rc<RefCell<Env>>, _args: &[Value]) -> Result<Value, SchemeError> {
+/**
+ * IO primitives.
+ */
+fn primitive_open_input_file(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
+    check_arity!(args, 1);
+    let filename = interp.to_string(args[0])?.to_string();
+    let file = File::open(&filename).map_err(|_| {
+        SchemeError::FileNotFound(format!(
+            "Can't open file {}", filename))
+    })?;
+    let reader = BufReader::new(file);
+    let boxed_reader: Box<dyn BufRead> = Box::new(reader);
+    let input = Rc::new(RefCell::new(Some(boxed_reader)));
+    Ok(interp.heap.borrow_mut().alloc_input_port(input))
+}
+
+fn primitive_close_input_port(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
+    check_arity!(args, 1);
+    let input = interp.to_input_port(args[0])?;
+    let reader = input.borrow_mut().take();
+    if ! reader.is_none() {
+        println!("File closed.");
+    } 
+    Ok(Value::Nil)
+}
+
+fn primitive_read_char(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
+    check_arity!(args, 1);
+    let input = interp.to_input_port(args[0])?;
+    let mut borrow = input.borrow_mut();
+    if let Some(ref mut reader) = *borrow {
+        let mut buf = [0u8; 1];
+        match reader.read_exact(&mut buf) {
+            Ok(_) => {
+                Ok(Value::Char(buf[0]))
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                Ok(Value::Eof)
+            },
+            Err(e) => {
+                Err(SchemeError::IOError(format!("Read error {}", e)))
+            }
+        }
+    } else {
+        Err(SchemeError::IOError(format!(
+            "Attempt to read from closed input port."
+        )))
+    }
+}
+
+fn primitive_eof_object(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
+    check_arity!(args, 1);
+    Ok(Value::Boolean(args[0] == Value::Eof))
+}
+
+fn primitive_gc(interp: &Interp, env: &Rc<RefCell<Env>>, _args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
     // Marks all reachable objects from the environment and the heap's symbols.
     let len = interp.heap.borrow().len();
     let mut marks = MarkSet::new(len);

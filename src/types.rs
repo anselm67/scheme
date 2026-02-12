@@ -16,6 +16,7 @@ pub enum SchemeError {
     FileNotFound(String),
     UserError(String),
     IndexOutOfBounds(String),
+    IOError(String),
     // Other error types can be added here
 }
 
@@ -180,6 +181,7 @@ pub enum Value {
     Object(GcId),
     Nil,
     Unbound,
+    Eof,
 }
 
 impl Value {
@@ -192,6 +194,7 @@ impl Value {
             Self::Object(_) => "Object",
             Self::Nil => "Nil",
             Self::Unbound => "*unbound*",
+            Self::Eof => "*EoF*"
         }
     }
 
@@ -262,7 +265,8 @@ impl SchemeObject for Value {
             Value::Boolean(true) => write!(f, "#t"),
             Value::Boolean(false) => write!(f, "#f"),
             Value::Nil => write!(f, "()"),
-            Value::Unbound => write!(f, "*unbound*")
+            Value::Unbound => write!(f, "*unbound*"),
+            Value::Eof => write!(f, "*eof*"),
         }
     }
 
