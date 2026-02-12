@@ -164,8 +164,6 @@ impl Interp {
         self.define_primitive("string-ci<=?", primitive_string_ci_lte);
         self.define_primitive("string-ci>?", primitive_string_ci_gt);
         self.define_primitive("string-ci>=?", primitive_string_ci_gte);
-
-        // TODO
         self.define_primitive("string-append", primitive_string_append);
         self.define_primitive("substring", primitive_substring);
         self.define_primitive("string-copy", primitive_string_copy);
