@@ -1,11 +1,11 @@
-use std::cell::{RefCell};
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process;
 use std::rc::Rc;
 
 use crate::env::Env;
-use crate::heap::{Apply, HeapObject, Keyword};
+use crate::heap::{Apply, HeapObject, Keyword, Vector};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
 use crate::{all_of_type, check_arity, check_min_arity, extract_args, heap};
@@ -166,10 +166,10 @@ impl Interp {
         self.define_primitive("string-ci>=?", primitive_string_ci_gte);
 
         // TODO
-        // self.define_primitive("string-append", primitive_string);
-        // self.define_primitive("substring", primitive_string);
-        // self.define_primitive("string-copy", primitive_string);
-        // self.define_primitive("string-fill!", primitive_string);
+        self.define_primitive("string-append", primitive_string_append);
+        self.define_primitive("substring", primitive_substring);
+        self.define_primitive("string-copy", primitive_string_copy);
+        self.define_primitive("string-fill!", primitive_string_fill);
 
         // Initialize system primitive functions.
         self.define_primitive("gc", primitive_gc);
@@ -272,30 +272,80 @@ impl Interp {
         }
     }
 
-    pub fn is_string(&self, value: Value, buf: &mut String) -> bool {
+    pub fn is_string(&self, value: Value) -> Option<Ref<'_, String>> {
         if let Some(id) = self.is_object(value) {
-            let heap = self.heap.borrow();
-            if let HeapObject::String(s) = heap.get(id) {
-                buf.clear();
-                buf.push_str(s);
-                return true;
-            }
+            Ref::filter_map(self.heap.borrow(), |h| {
+                if let HeapObject::String(string) = h.get(id) {
+                    Some(string)
+                } else {
+                    None
+                }
+            }).ok()
+        } else {
+            None
         }
-        return false;
     }
 
-    pub fn to_string(&self, value: Value, buf: &mut String) -> Result<Value, SchemeError> {
+    pub fn to_string(&self, value: Value) -> Result<Ref<'_,String>, SchemeError> {
         let id = self.to_object(value)?;
         let heap = self.heap.borrow();
-        if let HeapObject::String(s) = heap.get(id) {
-            buf.clear();
-            buf.push_str(s);
-            Ok(value)
-        } else {
-            Err(SchemeError::TypeError(format!(
-                "Expected a String, but got a {}.", value.type_name())
+        Ref::filter_map(heap, |h| {
+            if let HeapObject::String(string) = h.get(id) {
+                Some(string)
+            } else {
+                None
+            }
+        }).map_err(|_| {
+            SchemeError::TypeError(format!(
+                "Expected a String, but got a {}", value.type_name()
             ))
+        })
+    }
+
+    pub fn to_string_mut(&self, value: Value) -> Result<RefMut<'_,String>, SchemeError> {
+        let id = self.to_object(value)?;
+        let heap = self.heap.borrow_mut();
+        RefMut::filter_map(heap, |h| {
+            if let HeapObject::String(string) = h.get_mut(id) {
+                Some(string)
+            } else {
+                None
+            }
+        }).map_err(|_| {
+            SchemeError::TypeError(format!(
+                "Expected a String, but got a {}", value.type_name()
+            ))
+        })
+    }
+
+    pub fn is_vector(&self, value: Value) -> Option<Ref<'_, Vector>> {
+        if let Some(id) = self.is_object(value) {
+            Ref::filter_map(self.heap.borrow(), |h| {
+                if let HeapObject::Vector(vector) = h.get(id) {
+                    Some(vector)
+                } else {
+                    None
+                }
+            }).ok()
+        } else {
+            None
         }
+    }
+
+    pub fn to_vector(&self, value: Value) -> Result<Ref<'_,Vector>, SchemeError> {
+        let id = self.to_object(value)?;
+        let heap = self.heap.borrow();
+        Ref::filter_map(heap, |h| {
+            if let HeapObject::Vector(vector) = h.get(id) {
+                Some(vector)
+            } else {
+                None
+            }
+        }).map_err(|_| {
+            SchemeError::TypeError(format!(
+                "Expected a String, but got a {}", value.type_name()
+            ))
+        })
     }
 
     pub fn is_object(&self, value: Value) -> Option<GcId> {
@@ -525,14 +575,8 @@ fn primitive_eq(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> R
 
 fn primitive_error(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
     check_arity!(args, 1);
-    let mut msg = String::new();
-    if interp.is_string(args[0], &mut msg) {
-        Err(SchemeError::UserError(msg))
-    } else {
-        Err(SchemeError::TypeError(format!(
-            "Expected a String, but got a {}.", args[0].type_name()
-        )))
-    }
+    let string = interp.to_string(args[0])?.to_string();
+    Err(SchemeError::UserError(string))
 }
 
 fn primitive_symbol_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
@@ -760,11 +804,7 @@ fn primitive_list_cdr(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
 
 fn primitive_vector_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
     check_arity!(args, 1);
-    if let Value::Object(id) = args[0] {
-        Ok(Value::Boolean(interp.heap.borrow().is_vector(id)))
-    } else {
-        Ok(Value::Boolean(false))
-    }
+    Ok(Value::Boolean(interp.is_vector(args[0]).is_some()))
 }
 
 fn primitive_make_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
@@ -785,78 +825,48 @@ fn primitive_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) ->
 }
 
 fn primitive_vector_length(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
-    extract_args!(args, 1, id: Object);
-    let heap = interp.heap.borrow();
-    let obj = heap.get(*id); 
-    if let HeapObject::Vector(v) = obj {
-        Ok(Value::Number(Number::Int(v.data.borrow().len() as i64)))
-    } else {
-        Err(SchemeError::TypeError(format!(
-            "Expected a Vector, but got a {}.", args[0].type_name()
-        )))
-    }
+    check_arity!(args, 1);
+    let vector = interp.to_vector(args[0])?;
+    Ok(Value::Number(Number::Int(vector.data.borrow().len() as i64)))
 }
 
 fn primitive_vector_ref(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
-    extract_args!(args, 2, id: Object, index: Number);
-    let heap = interp.heap.borrow();
-    let obj = heap.get(*id); 
-    if let HeapObject::Vector(v) = obj {
-        let data = v.data.borrow();
-        if let Number::Int(index) = index
-            && *index >= 0 && *index < data.len() as i64 {
-            Ok(data[*index as usize])
-        } else {
-            Err(SchemeError::IndexOutOfBounds(format!(
-                "Index {} is not within [0, {}[", index, data.len()
-            )))
-        }   
+    check_arity!(args, 2);
+    let vector = interp.to_vector(args[0])?;
+    let data = vector.data.borrow();
+    let index = interp.to_integer(args[1])?;
+    if index >= 0 && index < data.len() as i64 {
+        Ok(data[index as usize])
     } else {
-        Err(SchemeError::TypeError(format!(
-            "Expected a Vector, but got a {}.", args[0].type_name()
+        Err(SchemeError::IndexOutOfBounds(format!(
+            "Index {} is not within [0, {}[", index, data.len()
         )))
-    }
+    }   
 }
 
 fn primitive_vector_set(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
-    // TODO Fix the extract_args! macro so it can take an unspecified Value.
     check_arity!(args, 3);
-    let vector_id = interp.to_object(args[0])?;
+    let vector = interp.to_vector(args[0])?;
+    let mut data = vector.data.borrow_mut();
     let index = interp.to_integer(args[1])?;
-    let heap = interp.heap.borrow();
-    let obj = heap.get(vector_id); 
-    if let HeapObject::Vector(v) = obj {
-        let mut data = v.data.borrow_mut();
-        if index >= 0 && index < data.len() as i64 {
-            data[index as usize] = args[2];
-            Ok(args[2])
-        } else {
-            Err(SchemeError::IndexOutOfBounds(format!(
-                "Index {} is not within [0, {}[", index, data.len()
-            )))
-        }   
+    if index >= 0 && index < data.len() as i64 {
+        data[index as usize] = args[2];
+        Ok(args[2])
     } else {
-        Err(SchemeError::TypeError(format!(
-            "Expected a Vector, but got a {}.", args[0].type_name()
+        Err(SchemeError::IndexOutOfBounds(format!(
+            "Index {} is not within [0, {}[", index, data.len()
         )))
-    }
+    }   
 }
 
 fn primitive_vector_to_list(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
-    extract_args!(args, 1, id: Object);
-    let obj ={
-        let heap = interp.heap.borrow();
-        heap.get(*id).clone()
+    check_arity!(args, 1);
+    let items: Vec<Value> = {
+        let vector = interp.to_vector(args[0])?;
+        let data = vector.data.borrow();
+        data.clone()
     };
-    if let HeapObject::Vector(v) = obj {
-        let mut heap = interp.heap.borrow_mut();
-        let data = v.data.borrow();
-        Ok(heap.alloc_list(&data))
-    } else {
-        Err(SchemeError::TypeError(format!(
-            "Expected a Vector, but got a {}.", args[0].type_name()
-        )))
-    }
+    Ok(interp.heap.borrow_mut().alloc_list(&items))
 }
 
 fn primitive_list_to_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
@@ -873,18 +883,10 @@ fn primitive_list_to_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Va
 
 fn primitive_vector_fill(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
     check_arity!(args, 2);
-    let vector_id = interp.to_object(args[0])?;
-    let heap = interp.heap.borrow();
-    let obj = heap.get(vector_id); 
-    if let HeapObject::Vector(v) = obj {
-        let mut data = v.data.borrow_mut();
-        data.fill(args[1]);
-        Ok(args[1])
-    } else {
-        Err(SchemeError::TypeError(format!(
-            "Expected a Vector, but got a {}.", args[0].type_name()
-        )))
-    }
+    let vector = interp.to_vector(args[0])?;
+    let mut data = vector.data.borrow_mut();
+    data.fill(args[1]);
+    Ok(args[1])
 }
 
 fn primitive_char_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
@@ -990,12 +992,7 @@ fn primitive_char_ci_gte(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Valu
 
 fn primitive_string_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
     check_arity!(args, 1);
-    if let Some(id) = interp.is_object(args[0]) {
-        Ok(Value::Boolean(interp.heap.borrow().is_string(id)))
-    } else {
-        Ok(Value::Boolean(false))
-    }
-
+    Ok(Value::Boolean(interp.is_string(args[0]).is_some()))
 }
 
 fn primitive_make_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
@@ -1021,11 +1018,12 @@ fn primitive_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) ->
 
 fn primitive_string_to_list(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
     extract_args!(args, 1, _id: Object);
-    let mut buf = String::new();
-    let _ = interp.to_string(args[0], &mut buf)?;
-    let chars:Vec<Value> = buf.chars().map(
-        |ch| Value::Char(ch as u8)
-    ).collect();
+    let chars:Vec<Value> = {
+        let string = interp.to_string(args[0])?;
+        string.chars().map(
+            |ch| Value::Char(ch as u8)
+        ).collect()
+    };
     Ok(interp.heap.borrow_mut().alloc_list(&chars))
 }
 
@@ -1041,53 +1039,38 @@ fn primitive_list_to_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Va
 }
 
 fn primitive_string_length(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
-    extract_args!(args, 1, id: Object);
-    if let Some(length) = interp.heap.borrow().string_length(*id) {
-        Ok(Value::Number(Number::Int(length as i64)))
-    } else {
-        Err(SchemeError::TypeError(format!(
-            "Expected a String, but got a {}", args[0].type_name()
-        )))
-    }
+    check_arity!(args, 1);
+    let string = interp.to_string(args[0])?;
+    Ok(Value::Number(Number::Int(string.len() as i64)))
 }
 
 fn primitive_string_ref(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
-    extract_args!(args, 2, id: Object, _index: Number);
-    if let HeapObject::String(string) = interp.heap.borrow().get(*id) {
-        let index = interp.to_integer(args[1])?;
-        if index >= 0 && index < (string.len() as i64) 
-            && let Some(ch) = string.chars().nth(index as usize) {
-            return Ok(Value::Char(ch as u8));
-        } else {
-            Err(SchemeError::IndexOutOfBounds(format!(
-                "Index {} is not in 0..{}", index, string.len()
-            )))
-        }
+    check_arity!(args, 2);
+    let string = interp.to_string(args[0])?;
+    let index = interp.to_integer(args[1])?;
+    if index >= 0 && index < (string.len() as i64) 
+        && let Some(ch) = string.chars().nth(index as usize) {
+        return Ok(Value::Char(ch as u8));
     } else {
-        Err(SchemeError::TypeError(format!(
-            "Expected a String, but got a {}", args[0].type_name()
+        Err(SchemeError::IndexOutOfBounds(format!(
+            "Index {} is not in 0..{}", index, string.len()
         )))
     }
 }
 
 fn primitive_string_set(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
-    extract_args!(args, 3, id: Object, _index: Number, value: Char);
-    let mut heap = interp.heap.borrow_mut();
-    if let HeapObject::String(string) = &mut heap.get_mut(*id) {
-        let index = interp.to_integer(args[1])?;
-        if index >= 0 && index < (string.len() as i64) {
-            // TODO This is really horrible!
-            string.remove(index as usize);
-            string.insert(index as usize, *value as char);
-            return Ok(args[0]);
-        } else {
-            Err(SchemeError::IndexOutOfBounds(format!(
-                "Index {} is not in 0..{}", index, string.len()
-            )))
-        }
+    check_arity!(args, 3);
+    let mut string = interp.to_string_mut(args[0])?;
+    let index = interp.to_integer(args[1])?;
+    let value = interp.to_char(args[2])?;
+    if index >= 0 && index < (string.len() as i64) {
+        // TODO This is really horrible!
+        string.remove(index as usize);
+        string.insert(index as usize, value as char);
+        return Ok(args[0]);
     } else {
-        Err(SchemeError::TypeError(format!(
-            "Expected a String, but got a {}", args[0].type_name()
+        Err(SchemeError::IndexOutOfBounds(format!(
+            "Index {} is not in 0..{}", index, string.len()
         )))
     }
 }
@@ -1219,7 +1202,60 @@ fn primitive_string_ci_gte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Val
     }
 }
 
+fn primitive_string_append(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
+    let mut buf = String::new();
+    for arg in args {
+        let string = interp.to_string(*arg)?;
+        buf.push_str(&string);
+    }
+    let mut heap = interp.heap.borrow_mut();
+    Ok(heap.alloc_string(buf))
+}
 
+fn primitive_substring(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
+    check_arity!(args, 3);
+    let string = interp.to_string(args[0])?.to_string();
+    let start_index = interp.to_integer(args[1])?;
+    let end_index = interp.to_integer(args[2])?;
+    if start_index < 0 || start_index > string.len() as i64 {
+        Err(SchemeError::IndexOutOfBounds(format!(
+            "Start index {} is not within 0..{}", start_index, string.len()
+        )))
+    } else if end_index < start_index || end_index > string.len() as i64 {
+        Err(SchemeError::IndexOutOfBounds(format!(
+            "End index {} is not within {}..{}", end_index, start_index, string.len()
+        )))
+    } else {
+        Ok(interp.heap.borrow_mut().alloc_string(&string[start_index as usize..end_index as usize]))
+    }
+}
+
+fn primitive_string_copy(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
+    check_arity!(args, 1);
+    let string = interp.to_string(args[0])?.to_string();
+    Ok(interp.heap.borrow_mut().alloc_string(string))
+}
+
+fn primitive_string_fill(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<Value, SchemeError> 
+{
+    check_arity!(args, 2);
+    let mut string = interp.to_string_mut(args[0])?.to_string();
+    let ch = interp.to_char(args[1])?;
+    // TODO Again this is really ugly!
+    let count = string.chars().count();
+    string.clear();
+    for _ in 0..count {
+        string.push(ch);
+    }
+    Ok(interp.heap.borrow_mut().alloc_string(string))
+}
 
 fn primitive_gc(interp: &Interp, env: &Rc<RefCell<Env>>, _args: &[Value]) -> Result<Value, SchemeError> {
     // Marks all reachable objects from the environment and the heap's symbols.
@@ -1253,9 +1289,8 @@ fn primitive_load(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])
 {
     // TODO SyntaxError don't seem to come all theway back here.
     let mut retval = Value::Nil;
-    let mut filename = String::new();
     for arg in args {
-        interp.to_string(*arg, &mut filename)?;
+        let filename = interp.to_string(*arg)?.to_string();
         retval = interp.load(&filename)?;
     }
     Ok(retval)

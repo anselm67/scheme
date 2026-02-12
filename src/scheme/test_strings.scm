@@ -31,3 +31,9 @@
 (assert-equal #t (string-ci>? "bbb" "AAA"))
 (assert-equal #t (string-ci>=? "abcd" "ABCD"))
 
+(assert-equal "abcd" (string-append "ab" "cd"))
+(assert-equal "abcd" (substring "xxabcdyy" 2 6))
+(assert-equal "abcd" (string-copy "abcd"))
+(assert-equal "aaaa" (string-fill! "abcd" #\a))
+
+
