@@ -221,6 +221,7 @@ impl Interp {
         }
     }
 
+    // TODO Remove this function all together.
     pub fn eval_full(&self, env: Rc<RefCell<Env>>, obj: Value)  
         -> Result<Value, SchemeError> 
     {
@@ -544,14 +545,19 @@ impl Interp {
         Ok(expansion)
     }
 
+    fn get_macro(&self, id: GcId) -> Option<Value> {
+        // This function's purpose is to limit the scope of env borrowing.
+        self.env.borrow().macros.get(&id).cloned()
+    }
+
     pub fn expand(&self, expr: Value) -> Result<Value, SchemeError> {
         if let Some((car, cdr)) = self.is_pair(expr) {
             if let Value::Object(id) = car && id == 8 {
                 Ok(expr)
             } else if let Value::Object(id) = car
-                && let Some(func) = self.env.borrow().macros.get(&id) 
+                && let Some(func) = self.get_macro(id) 
             {
-                Ok(self.expand(self.expand_macro(*func, cdr)?)?)
+                Ok(self.expand(self.expand_macro(func, cdr)?)?)
             } else {
                 let mut updated = false;
                 let items = self.fold_list(

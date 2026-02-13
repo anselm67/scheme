@@ -35,15 +35,24 @@ impl Env {
         self.macros.insert(key, value);
     }
 
-    pub fn set_bang(&mut self, key: GcId, value: Value) -> Result<(), SchemeError> {
-        if self.bindings.contains_key(&key) {
-            self.bindings.insert(key, value);
-            Ok(())
-        } else {
-            match &self.parent {
-                Some(parent_env) => parent_env.borrow_mut().set_bang(key, value),
-                None => Err(SchemeError::UnboundVariable(format!("Unbound variable with GcId {}", key))),
+    pub fn set_bang(env_rc: Rc<RefCell<Env>>, key: GcId, value: Value) -> Result<(), SchemeError> {
+        let mut current_rc = env_rc.clone();
+        loop {
+            {
+                let mut env = current_rc.borrow_mut();
+                if env.bindings.contains_key(&key) {
+                    env.bindings.insert(key, value);
+                    return Ok(());
+                }
             }
+            let next_opt = {
+                let env_ref = current_rc.borrow();
+                env_ref.parent.clone()
+            };
+            match next_opt {
+                Some(p) => current_rc = p,
+                None => return Err(SchemeError::UnboundVariable(format!("Unbound variable with GcId {}", key))),                
+            };
         }
     }
 

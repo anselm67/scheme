@@ -208,10 +208,10 @@ impl Keyword {
             },
             Keyword::SetBang => {
                 check_arity!(args, 2);
-                let var = &args[0];
+                let var = args[0];
                 let value = interp.eval_full(env.clone(), args[1])?;
                 if let Value::Object(var_id) = var {
-                    env.borrow_mut().set_bang(*var_id, value)?;
+                    Env::set_bang(env.clone(), var_id, value)?;
                     Ok(EvalResult::Done(value))
                 } else {
                     Err(SchemeError::TypeError("set! first argument must be a variable".to_string()))
@@ -648,6 +648,7 @@ impl SchemeObject for GcId {
                 for expr in closure.body {
                     expr.mark(interp, marks);
                 }
+                closure.tail.mark(interp, marks);
                 closure.env.borrow().mark(interp, marks);
             },
             _ => {

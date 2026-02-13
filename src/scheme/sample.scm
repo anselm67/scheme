@@ -11,3 +11,12 @@
     ;; Not reached!
     ()
 )
+
+(define (cat filename)
+    (let ((port (open-input-file filename)))
+        (let loop 
+            (let ((ch (read-char port)))
+                (unless (eof-object? ch) 
+                    (debug ch)
+                    (loop)))))
+)

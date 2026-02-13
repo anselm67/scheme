@@ -23,10 +23,21 @@
         `((lambda ,(map car bindings) ,@body) ,@(map cadr bindings)))
 )
 
+(define-syntax letrec
+    (lambda (bindings . body)
+        ; TODO Once map is fixed, we can use:
+        ; (let ((vars (map car bindings)) (vals (cadr bindings)) 
+        ;     ...
+        ;     ,@(map (lambda (var val) (list 'set! var val)) vars vals)))
+        `(let ,(map (lambda (varval) (list (car varval) ''*undefined*)) bindings) 
+            ,@(map (lambda (varval) (list 'set! (car varval) (cadr varval))) bindings)
+            ,@body)
+))
+
 (define-syntax begin (lambda exprs `((lambda () ,@exprs))))
 
 (define-syntax unless 
-    (lambda (cond . body) `(if (not ,cond) (begin ,@body)))
+    (lambda (cond . body) `(if ,cond () (begin ,@body)))
 )
 
 (define-syntax or 
