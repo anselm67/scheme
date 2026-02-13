@@ -20,8 +20,12 @@ pub enum SchemeError {
     // Other error types can be added here
 }
 
+pub enum EvalResult {
+    Done(Value),
+    Continuation(Rc<RefCell<Env>>, Value)
+}
 pub trait SchemeObject {
-    fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError>;
+    fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError>;
     fn is_false(&self) -> bool;
     fn write_to(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result;
     fn mark(&self, interp: &Interp, marks: &mut MarkSet);
@@ -231,12 +235,14 @@ impl<'a> std::fmt::Display for DisplayWrapper<'a> {
 
 impl SchemeObject for Value {
 
-    fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError> {
+    fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) 
+        -> Result<EvalResult, SchemeError> 
+    {
         match self {
             Value::Object(id) => {
                 id.eval(interp, env)
             },
-            _ => Ok(*self),
+            _ => Ok(EvalResult::Done(*self)),
         }
     }
 

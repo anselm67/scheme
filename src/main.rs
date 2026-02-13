@@ -10,7 +10,8 @@ use scheme::interp::{Interp};
 fn eval_expr(interp: &Interp, expr: Value) {
     let mut result = interp.expand(expr);
     if let Ok(expr) = result {
-        result = interp.eval(&interp.env, expr);
+        let env = interp.env.clone();
+        result = interp.eval(env, expr);
     }
     match result {
         Ok(val) => {

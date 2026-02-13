@@ -1,16 +1,22 @@
 use std::{cell::RefCell, collections::HashMap, fmt, io::{BufRead, Write}, rc::Rc};
 
 use crate::{
-    check_arity, env::Env, interp::Interp, markset::MarkSet, types::{GcId, SchemeError, SchemeObject, Value}
+    check_arity, 
+    env::Env, 
+    interp::Interp, 
+    markset::MarkSet, 
+    types::{EvalResult, GcId, SchemeError, SchemeObject, Value}
 };
 
-pub type PrimitiveFn = fn(&Interp, env: &Rc<RefCell<Env>>, &[Value]) -> Result<Value, SchemeError>;
+pub type PrimitiveFn = fn(&Interp, env: Rc<RefCell<Env>>, &[Value]) 
+    -> Result<EvalResult, SchemeError>;
 
 
 #[derive(Clone)]
 pub struct Closure {
     params: Box<[GcId]>,
     body: Box<[Value]>,
+    tail: Value,
     env: Rc<RefCell<Env>>,
 }
 
@@ -139,47 +145,51 @@ impl Keyword {
         }
     }
 
-    fn eval(interp: &Interp, env: &Rc<RefCell<Env>>, keyword: Keyword, args: &[Value]) -> Result<Value, SchemeError> {
+    fn eval(interp: &Interp, env: Rc<RefCell<Env>>, keyword: Keyword, args: &[Value]) 
+        -> Result<EvalResult, SchemeError> 
+    {
         match keyword {
             Keyword::If => {
                 check_arity!(args, 3);
-                let condition = args[0].eval(interp, env)?;
+                let condition = interp.eval_full(env.clone(), args[0])?;
                 match condition {
-                    Value::Boolean(false) => args[2].eval(interp, env),
-                    _ => args[1].eval(interp, env),
+                    Value::Boolean(false) => Ok(EvalResult::Continuation(env, args[2])),
+                    _ => Ok(EvalResult::Continuation(env, args[1])),
                 }
             },
             Keyword::DefineBang => {
                 check_arity!(args, 2);
                 let symbol = interp.to_object(args[0])?;
-                let value = args[1].eval(interp, env)?;
+                let value = interp.eval_full(env.clone(), args[1])?;
                 env.borrow_mut().define(symbol, value);
-                Ok(Value::Nil)
+                Ok(EvalResult::Done(Value::Nil))
             },
             Keyword::DefineSyntax => {
                 check_arity!(args, 2);
                 let symbol = interp.to_symbol(args[0])?;
-                let value = args[1].eval(interp, env)?;
+                let value = interp.eval_full(env.clone(), args[1])?;
                 env.borrow_mut().define_syntax(symbol, value);
-                Ok(Value::Nil)
+                Ok(EvalResult::Done(Value::Nil))
             },
             Keyword::Lambda => {
                 match args {
-                    [params_value, body @ ..] => {
+                    [params_value, body @ .., tail] => {
                         let (params, is_nary) = extract_param_ids(interp, *params_value)?;
                         let mut heap = interp.heap.borrow_mut();
                         if is_nary {
-                            Ok(heap.alloc_nary_closure(Closure {
+                            Ok(EvalResult::Done(heap.alloc_nary_closure(Closure {
                                 params: params.into_boxed_slice(),
                                 body: body.to_vec().into_boxed_slice(),
+                                tail: *tail,
                                 env: Rc::clone(&interp.env),
-                            }))
+                            })))
                         } else {
-                            Ok(heap.alloc_closure(Closure {
+                            Ok(EvalResult::Done(heap.alloc_closure(Closure {
                                 params: params.into_boxed_slice(),
                                 body: body.to_vec().into_boxed_slice(),
+                                tail: *tail,
                                 env: Rc::clone(&interp.env),
-                            }))
+                            })))
                         }
                     },
                     _ => Err(SchemeError::EvalError(format!(
@@ -189,20 +199,20 @@ impl Keyword {
             }
             Keyword::Quote => {
                 check_arity!(args, 1);
-                Ok(args[0])
+                Ok(EvalResult::Done(args[0]))
             }
             Keyword::QuasiQuote => {
                 check_arity!(args, 1);
                 let expr = interp.expand_quasiquote(args[0])?;
-                interp.eval(env, expr)
+                Ok(EvalResult::Done(interp.eval(env, expr)?))
             },
             Keyword::SetBang => {
                 check_arity!(args, 2);
                 let var = &args[0];
-                let value = args[1].eval(interp, env)?;
+                let value = interp.eval_full(env.clone(), args[1])?;
                 if let Value::Object(var_id) = var {
                     env.borrow_mut().set_bang(*var_id, value)?;
-                    Ok(value)
+                    Ok(EvalResult::Done(value))
                 } else {
                     Err(SchemeError::TypeError("set! first argument must be a variable".to_string()))
                 }
@@ -437,13 +447,13 @@ impl Heap {
     }
 }
 pub trait Apply {
-    fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) 
-        -> Result<Value, SchemeError>;
+    fn apply(&self, interp: &Interp, env: Rc<RefCell<Env>>, args: Vec<Value>) 
+        -> Result<EvalResult, SchemeError>;
 }
 
 impl Apply for Value {
-    fn apply(&self, interp: &Interp, env: &Rc<RefCell<Env>>, args: Vec<Value>) 
-        -> Result<Value, SchemeError> 
+    fn apply(&self, interp: &Interp, env: Rc<RefCell<Env>>, args: Vec<Value>) 
+        -> Result<EvalResult, SchemeError> 
     {
         let obj = {
             let heap = interp.heap.borrow();
@@ -457,7 +467,7 @@ impl Apply for Value {
     
         match obj {
             HeapObject::Pair(car, _) => {
-                let func = car.eval(interp, env)?;
+                let func = interp.eval_full(env.clone(), car)?;
                 func.apply(interp, env, args)
             },
             HeapObject::Closure(closure) => {
@@ -466,11 +476,10 @@ impl Apply for Value {
                 for (param_id, arg_value) in closure.params.iter().zip(args.iter()) {
                     new_env.borrow_mut().define(*param_id, *arg_value);
                 }
-                let mut result = Value::Nil;
                 for expr in &closure.body {
-                    result = expr.eval(interp, &new_env)?;
+                    interp.eval_full(new_env.clone(), *expr)?;
                 }
-                Ok(result)
+                Ok(EvalResult::Continuation(new_env, closure.tail))
             },
             HeapObject::NaryClosure(closure) => {
                 let new_env = Env::extend(closure.env.clone());
@@ -486,13 +495,14 @@ impl Apply for Value {
                 }
                 let rest = interp.heap.borrow_mut().alloc_list(&args[index..]);
                 new_env.borrow_mut().define(closure.params[index], rest);
-                let mut result = Value::Nil;
                 for expr in &closure.body {
-                    result = expr.eval(interp, &new_env)?;
+                    interp.eval_full(new_env.clone(), *expr)?;
                 }
-                Ok(result)
+                Ok(EvalResult::Continuation(new_env, closure.tail))
             },
-            HeapObject::Primitive(pr) => pr(interp, env, &args),
+            HeapObject::Primitive(pr) => {
+                Ok(pr(interp, env, &args)?)
+            }
             HeapObject::FreeSlot(_) => {
                 panic!("Attempt to apply a FreeSlot!");
             }
@@ -507,7 +517,9 @@ impl Apply for Value {
 
 impl SchemeObject for GcId {
 
-    fn eval(&self, interp: &Interp, env: &Rc<RefCell<Env>>) -> Result<Value, SchemeError> {
+    fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) 
+        -> Result<EvalResult, SchemeError> 
+    {
         let id = *self;
         let obj = {
             let heap = interp.heap.borrow();
@@ -527,31 +539,31 @@ impl SchemeObject for GcId {
                             acc.push(arg);
                             Ok(acc)
                         });
-                    Keyword::eval(interp, env, keyword, &args?)
+                    Keyword::eval(interp, env.clone(), keyword, &args?)
                 } else {
                     // Regular function call with arg eval.
                     let args = interp.fold_list(
                         cdr,
                         Vec::new(), 
                         |mut acc, arg| {
-                            let value = arg.eval(interp, env)?;
+                            let value = interp.eval_full(env.clone(), arg)?;
                             acc.push(value);
                             Ok(acc)
                         });
-                    let func = car.eval(interp, env)?;
-                    func.apply(interp, env, args?)
+                    let func = interp.eval_full(env.clone(), car)?;
+                    func.apply(interp, env.clone(), args?)
                 }
             },
             HeapObject::Symbol(name) => {
                 match env.borrow().lookup(id) {
-                    Some(value) => return Ok(value),
+                    Some(value) => return Ok(EvalResult::Done(value)),
                     None => {
                         return Err(SchemeError::UnboundVariable(format!("Unbound symbol: {}", name)))
                     },
                 }
             },
             HeapObject::FreeSlot(_) => panic!("Request to evaluate FreeSlot at {}", id),
-            _ => Ok(Value::Object(id))
+            _ => Ok(EvalResult::Done(Value::Object(id)))
         }
     }
 

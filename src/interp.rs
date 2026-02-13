@@ -11,7 +11,7 @@ use crate::heap::{Apply, HeapObject, Keyword, Vector};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
 use crate::{all_of_type, check_arity, check_min_arity, extract_args, heap};
-use crate::types::{DisplayWrapper, GcId, Number, SchemeError, SchemeObject, Value};
+use crate::types::{DisplayWrapper, EvalResult, GcId, Number, SchemeError, SchemeObject, Value};
 
 pub struct Interp {
     pub heap: RefCell<heap::Heap>,
@@ -205,8 +205,26 @@ impl Interp {
         self.heap.borrow_mut().intern_symbol(name)
     }
 
-    pub fn eval(&self, env: &Rc<RefCell<Env>>, obj: Value)  -> Result<Value, SchemeError> {
-        obj.eval(self, env) 
+    pub fn eval(&self, env: Rc<RefCell<Env>>, expr: Value)  
+        -> Result<Value, SchemeError> 
+    {
+        let mut current_expr = expr;
+        let mut current_env = env;
+        loop {
+            match current_expr.eval(self, current_env)?  {
+                EvalResult::Done(value) => return Ok(value),
+                EvalResult::Continuation(next_env, next_expr) => {
+                    current_expr = next_expr;
+                    current_env = next_env;
+                }
+            }
+        }
+    }
+
+    pub fn eval_full(&self, env: Rc<RefCell<Env>>, obj: Value)  
+        -> Result<Value, SchemeError> 
+    {
+        self.eval(env, obj)
     }
 
     pub fn display(&self, obj: Value) -> String {
@@ -517,7 +535,12 @@ impl Interp {
                 acc.push(self.expand(arg)?);
                 Ok(acc)
             });
-        let expansion = func.apply(self, &self.env, args?)?;
+        let expansion = match func.apply(self, self.env.clone(), args?)? {
+            EvalResult::Done(value) =>  value,
+            EvalResult::Continuation(next_env, next_expr) => {
+                self.eval(next_env, next_expr)?
+            }
+        };
         Ok(expansion)
     }
 
@@ -565,60 +588,68 @@ impl Interp {
                 break;
             }
             retval = self.expand(expr)?;
-            retval = self.eval(&self.env, retval)?;
+            retval = self.eval_full(self.env.clone(), retval)?;
         }
         Ok(retval)
     }
 
 }
 
-fn primitive_eval(interp: &Interp, env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+fn primitive_eval(interp: &Interp, env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
     check_arity!(args, 1);
-    interp.eval(env, args[0],)
+    Ok(EvalResult::Done(interp.eval(env, args[0])?))
 }
 
-fn primitive_apply(interp: &Interp, env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+fn primitive_apply(interp: &Interp, env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
     use crate::heap::Apply;
-    check_min_arity!(args, 1);
+    check_min_arity!(args, 2);
     let func = args[0];
     func.apply(interp, env, args[1..].to_vec())
 }
 
-fn primitive_expand(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+fn primitive_expand(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    interp.expand(args[0])
+    Ok(EvalResult::Done(interp.expand(args[0])?))
 }
 
-fn primitive_equal(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+fn primitive_equal(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
     check_arity!(args, 2);
-    Ok(Value::Boolean(args[0].is_equal(interp, &args[1])))
+    Ok(EvalResult::Done(Value::Boolean(args[0].is_equal(interp, &args[1]))))
 }
 
-fn primitive_eq(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+fn primitive_eq(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
     check_arity!(args, 2);
-    Ok(Value::Boolean(args[0] == args[1]))
+    Ok(EvalResult::Done(Value::Boolean(args[0] == args[1])))
 }
 
-fn primitive_error(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+fn primitive_error(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let string = interp.to_string(args[0])?.to_string();
     Err(SchemeError::UserError(string))
 }
 
-fn primitive_symbol_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])  -> Result<Value, SchemeError> {
+fn primitive_symbol_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    Ok(Value::Boolean(interp.is_symbol(args[0]).is_some()))
+    Ok(EvalResult::Done(Value::Boolean(interp.is_symbol(args[0]).is_some())))
 }
 
 
-fn primitive_add(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_add(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     let sum = nums.into_iter()
         .fold(Number::Int(0), |acc, n| acc  + n);
-    Ok(Value::Number(sum))
+    Ok(EvalResult::Done(Value::Number(sum)))
 }
 
-fn primitive_sub(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_sub(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
@@ -633,10 +664,10 @@ fn primitive_sub(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> R
     } else {
         iter.fold(init, |acc, n| acc - n)
     };
-    Ok(Value::Number(sub))
+    Ok(EvalResult::Done(Value::Number(sub)))
 }
 
-fn primitive_div(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_div(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
@@ -651,23 +682,23 @@ fn primitive_div(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> R
     } else {
         iter.fold(init, |acc, n| acc / n)
     };
-    Ok(Value::Number(div))
+    Ok(EvalResult::Done(Value::Number(div)))
 }
 
 
-fn primitive_mul(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_mul(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     let mul = nums.into_iter()
         .fold(Number::Int(1), |acc, n| acc * n);
-    Ok(Value::Number(mul))
+    Ok(EvalResult::Done(Value::Number(mul)))
 }
 
-fn primitive_rem(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_rem(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
-    Ok(Value::Number(*a % *b))
+    Ok(EvalResult::Done(Value::Number(*a % *b)))
 }
 
-fn primitive_quit(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_quit(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, exit_code: Number);
     match i32::try_from(*exit_code) {
         Ok(code) => process::exit(code),
@@ -678,47 +709,47 @@ fn primitive_quit(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> 
 
 }
 
-fn primitive_number_eq(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_number_eq(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
-    return Ok(Value::Boolean(a == b))
+    Ok(EvalResult::Done(Value::Boolean(a == b)))
 }
 
-fn primitive_number_lt(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_number_lt(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
-    return Ok(Value::Boolean(a < b))
+    Ok(EvalResult::Done(Value::Boolean(a < b)))
 }
 
-fn primitive_number_lte(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_number_lte(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
-    return Ok(Value::Boolean(a <= b))
+    Ok(EvalResult::Done(Value::Boolean(a <= b)))
 }
 
-fn primitive_number_gt(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_number_gt(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
-    return Ok(Value::Boolean(a > b))
+    Ok(EvalResult::Done(Value::Boolean(a > b)))
 }
 
-fn primitive_number_gte(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_number_gte(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
-    return Ok(Value::Boolean(a >= b))
+    Ok(EvalResult::Done(Value::Boolean(a >= b)))
 }
 
-fn primitive_number_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_number_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    Ok(Value::Boolean(interp.is_number(args[0]).is_some()))
+    Ok(EvalResult::Done(Value::Boolean(interp.is_number(args[0]).is_some())))
 }
 
-fn primitive_integer_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_integer_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    Ok(Value::Boolean(interp.is_integer(args[0]).is_some()))
+    Ok(EvalResult::Done(Value::Boolean(interp.is_integer(args[0]).is_some())))
 }
 
-fn primitive_float_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_float_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    Ok(Value::Boolean(interp.is_float(args[0]).is_some()))
+    Ok(EvalResult::Done(Value::Boolean(interp.is_float(args[0]).is_some())))
 }
 
-fn primitive_number_max(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_number_max(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
@@ -727,10 +758,10 @@ fn primitive_number_max(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value
     let init = nums[0];
     let ret = nums.into_iter()
         .fold(init, |a, b| if a > b { a } else { b });
-    Ok(Value::Number(ret))
+    Ok(EvalResult::Done(Value::Number(ret)))
 }
 
-fn primitive_number_min(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_number_min(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
@@ -739,18 +770,18 @@ fn primitive_number_min(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value
     let init = nums[0];
     let ret = nums.into_iter()
         .fold(init, |a, b| if a < b { a } else { b });
-    Ok(Value::Number(ret))
+    Ok(EvalResult::Done(Value::Number(ret)))
 }
 
-fn primitive_list(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_list(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     if args.is_empty() {
-        Ok(Value::Nil)
+        Ok(EvalResult::Done(Value::Nil))
     } else {
-        Ok(interp.heap.borrow_mut().alloc_list(args))
+        Ok(EvalResult::Done(interp.heap.borrow_mut().alloc_list(args)))
     }
 }
 
-fn primitive_append(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])-> Result<Value, SchemeError> {
+fn primitive_append(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])-> Result<EvalResult, SchemeError> {
     let mut retval = Value::Nil;
     let mut prev_cdr = Value::Nil;
     for (i, arg) in args.iter().enumerate() {
@@ -783,10 +814,10 @@ fn primitive_append(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])-> 
             }
         }
     }
-    Ok(retval)
+    Ok(EvalResult::Done(retval))
 }
 
-fn primitive_length(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_length(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let mut length = 0;
     if ! matches!(args[0], Value::Nil) {
@@ -797,43 +828,43 @@ fn primitive_length(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) ->
             (_, cdr) = interp.to_pair(cdr)?;
         }
     }
-    Ok(Value::Number(Number::Int(length)))
+    Ok(EvalResult::Done(Value::Number(Number::Int(length))))
 }
 
-fn primitive_list_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_list_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    Ok(Value::Boolean(interp.is_nil(args[0]) || interp.is_list(args[0])))
+    Ok(EvalResult::Done(Value::Boolean(interp.is_nil(args[0]) || interp.is_list(args[0]))))
 }
 
-fn primitive_null_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_null_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    Ok(Value::Boolean(interp.is_null(args[0])))
+    Ok(EvalResult::Done(Value::Boolean(interp.is_null(args[0]))))
 }
 
-fn primitive_list_cons(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_list_cons(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     let mut heap = interp.heap.borrow_mut();
-    Ok(heap.alloc_pair(args[0], args[1]))
+    Ok(EvalResult::Done(heap.alloc_pair(args[0], args[1])))
 }
 
-fn primitive_list_car(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_list_car(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let (car, _) = interp.to_pair(args[0])?;
-    Ok(car)
+    Ok(EvalResult::Done(car))
 }
 
-fn primitive_list_cdr(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_list_cdr(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let (_, cdr) = interp.to_pair(args[0])?;
-    Ok(cdr)
+    Ok(EvalResult::Done(cdr))
 }
 
-fn primitive_vector_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_vector_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    Ok(Value::Boolean(interp.is_vector(args[0]).is_some()))
+    Ok(EvalResult::Done(Value::Boolean(interp.is_vector(args[0]).is_some())))
 }
 
-fn primitive_make_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_make_vector(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_min_arity!(args, 1);
     let size = interp.to_integer(args[0])?;
     let mut fill_value = Value::Number(Number::Int(0));
@@ -842,27 +873,33 @@ fn primitive_make_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value
     }    
     let mut heap = interp.heap.borrow_mut();
     let data = vec![fill_value; size as usize];
-    Ok(heap.alloc_vector(&data)) 
+    Ok(EvalResult::Done(heap.alloc_vector(&data)))
 }
 
-fn primitive_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_vector(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
     let mut heap = interp.heap.borrow_mut();
-    Ok(heap.alloc_vector(args)) 
+    Ok(EvalResult::Done(heap.alloc_vector(args)))
 }
 
-fn primitive_vector_length(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_vector_length(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
     check_arity!(args, 1);
     let vector = interp.to_vector(args[0])?;
-    Ok(Value::Number(Number::Int(vector.data.borrow().len() as i64)))
+    Ok(EvalResult::Done(Value::Number(Number::Int(vector.data.borrow().len() as i64))))
 }
 
-fn primitive_vector_ref(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_vector_ref(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
     check_arity!(args, 2);
     let vector = interp.to_vector(args[0])?;
     let data = vector.data.borrow();
     let index = interp.to_integer(args[1])?;
     if index >= 0 && index < data.len() as i64 {
-        Ok(data[index as usize])
+        Ok(EvalResult::Done(data[index as usize]))
     } else {
         Err(SchemeError::IndexOutOfBounds(format!(
             "Index {} is not within [0, {}[", index, data.len()
@@ -870,14 +907,16 @@ fn primitive_vector_ref(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]
     }   
 }
 
-fn primitive_vector_set(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_vector_set(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
     check_arity!(args, 3);
     let vector = interp.to_vector(args[0])?;
     let mut data = vector.data.borrow_mut();
     let index = interp.to_integer(args[1])?;
     if index >= 0 && index < data.len() as i64 {
         data[index as usize] = args[2];
-        Ok(args[2])
+        Ok(EvalResult::Done(args[2]))
     } else {
         Err(SchemeError::IndexOutOfBounds(format!(
             "Index {} is not within [0, {}[", index, data.len()
@@ -885,17 +924,21 @@ fn primitive_vector_set(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]
     }   
 }
 
-fn primitive_vector_to_list(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_vector_to_list(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
     check_arity!(args, 1);
     let items: Vec<Value> = {
         let vector = interp.to_vector(args[0])?;
         let data = vector.data.borrow();
         data.clone()
     };
-    Ok(interp.heap.borrow_mut().alloc_list(&items))
+    Ok(EvalResult::Done(interp.heap.borrow_mut().alloc_list(&items)))
 }
 
-fn primitive_list_to_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_list_to_vector(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
     extract_args!(args, 1, _id: Object);
     let items = interp.fold_list(
         args[0], vec![], |mut acc, item| {
@@ -904,145 +947,145 @@ fn primitive_list_to_vector(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Va
         }
     )?;
     let mut heap = interp.heap.borrow_mut();
-    Ok(heap.alloc_vector(&items))
+    Ok(EvalResult::Done(heap.alloc_vector(&items)))
 }
 
-fn primitive_vector_fill(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_vector_fill(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     let vector = interp.to_vector(args[0])?;
     let mut data = vector.data.borrow_mut();
     data.fill(args[1]);
-    Ok(args[1])
+    Ok(EvalResult::Done(args[1]))
 }
 
-fn primitive_char_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    Ok(Value::Boolean(interp.is_char(args[0]).is_some()))
+    Ok(EvalResult::Done(Value::Boolean(interp.is_char(args[0]).is_some())))
 }
 
-fn primitive_char_alphabetic_p(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_alphabetic_p(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    Ok(Value::Boolean((*ch as char).is_alphabetic()))
+    Ok(EvalResult::Done(Value::Boolean((*ch as char).is_alphabetic())))
 }
 
-fn primitive_char_numeric_p(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_numeric_p(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    Ok(Value::Boolean((*ch as char).is_digit(10)))
+    Ok(EvalResult::Done(Value::Boolean((*ch as char).is_digit(10))))
 }
 
-fn primitive_char_whitespace_p(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_whitespace_p(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    Ok(Value::Boolean(*ch == 9 || *ch == 10 || *ch == 32))
+    Ok(EvalResult::Done(Value::Boolean(*ch == 9 || *ch == 10 || *ch == 32)))
 }
 
-fn primitive_char_upper_case_p(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_upper_case_p(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    Ok(Value::Boolean((*ch as char).is_uppercase()))
+    Ok(EvalResult::Done(Value::Boolean((*ch as char).is_uppercase())))
 }
 
-fn primitive_char_lower_case_p(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_lower_case_p(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    Ok(Value::Boolean((*ch as char).is_lowercase()))
+    Ok(EvalResult::Done(Value::Boolean((*ch as char).is_lowercase())))
 }
 
-fn primitive_char_to_integer(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_to_integer(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    Ok(Value::Number(Number::Int(*ch as i64)))
+    Ok(EvalResult::Done(Value::Number(Number::Int(*ch as i64))))
 }
 
-fn primitive_integer_to_char(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_integer_to_char(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let byte = interp.to_integer(args[0])?;
-    Ok(Value::Char(byte as u8))
+    Ok(EvalResult::Done(Value::Char(byte as u8)))
 }
 
-fn primitive_char_upcase(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_upcase(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    Ok(Value::Char((*ch as char).to_ascii_uppercase() as u8))
+    Ok(EvalResult::Done(Value::Char((*ch as char).to_ascii_uppercase() as u8)))
 }
 
-fn primitive_char_downcase(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_downcase(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    Ok(Value::Char((*ch as char).to_ascii_lowercase() as u8))
+    Ok(EvalResult::Done(Value::Char((*ch as char).to_ascii_lowercase() as u8)))
 }
 
-fn primitive_char_eq(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_eq(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1 == ch2))
+    Ok(EvalResult::Done(Value::Boolean(ch1 == ch2)))
 }
 
-fn primitive_char_lt(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_lt(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1 < ch2))
+    Ok(EvalResult::Done(Value::Boolean(ch1 < ch2)))
 }
 
-fn primitive_char_lte(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_lte(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1 <= ch2))
+    Ok(EvalResult::Done(Value::Boolean(ch1 <= ch2)))
 }
 
-fn primitive_char_gt(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_gt(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1 > ch2))
+    Ok(EvalResult::Done(Value::Boolean(ch1 > ch2)))
 }
 
-fn primitive_char_gte(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_gte(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1 >= ch2))
+    Ok(EvalResult::Done(Value::Boolean(ch1 >= ch2)))
 }
 
-fn primitive_char_ci_eq(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_ci_eq(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1.to_ascii_lowercase() == ch2.to_ascii_lowercase()))
+    Ok(EvalResult::Done(Value::Boolean(ch1.to_ascii_lowercase() == ch2.to_ascii_lowercase())))
 }
 
-fn primitive_char_ci_lt(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_ci_lt(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1.to_ascii_lowercase() < ch2.to_ascii_lowercase()))
+    Ok(EvalResult::Done(Value::Boolean(ch1.to_ascii_lowercase() < ch2.to_ascii_lowercase())))
 }
 
-fn primitive_char_ci_lte(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_ci_lte(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1.to_ascii_lowercase() <= ch2.to_ascii_lowercase()))
+    Ok(EvalResult::Done(Value::Boolean(ch1.to_ascii_lowercase() <= ch2.to_ascii_lowercase())))
 }
 
-fn primitive_char_ci_gt(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_ci_gt(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1.to_ascii_lowercase() > ch2.to_ascii_lowercase()))
+    Ok(EvalResult::Done(Value::Boolean(ch1.to_ascii_lowercase() > ch2.to_ascii_lowercase())))
 }
 
-fn primitive_char_ci_gte(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_char_ci_gte(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    Ok(Value::Boolean(ch1.to_ascii_lowercase() >= ch2.to_ascii_lowercase()))
+    Ok(EvalResult::Done(Value::Boolean(ch1.to_ascii_lowercase() >= ch2.to_ascii_lowercase())))
 }
 
-fn primitive_string_p(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    Ok(Value::Boolean(interp.is_string(args[0]).is_some()))
+    Ok(EvalResult::Done(Value::Boolean(interp.is_string(args[0]).is_some())))
 }
 
-fn primitive_make_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_make_string(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let mut fill_char = 32 as char;
     check_min_arity!(args, 1);
     let count = interp.to_integer(args[0])?;
     if args.len() > 1 {
         fill_char = interp.to_char(args[1])?;
     }
-    Ok(interp.heap.borrow_mut().alloc_string(
+    Ok(EvalResult::Done(interp.heap.borrow_mut().alloc_string(
         fill_char.to_string().repeat(count as usize))
-    )
+    ))
 }
 
-fn primitive_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let mut buf = String::new();
     for arg in args {
         let ch = interp.to_char(*arg)?;
         buf.push(ch);
     }
-    Ok(interp.heap.borrow_mut().alloc_string(buf))
+    Ok(EvalResult::Done(interp.heap.borrow_mut().alloc_string(buf)))
 }
 
-fn primitive_string_to_list(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_to_list(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, _id: Object);
     let chars:Vec<Value> = {
         let string = interp.to_string(args[0])?;
@@ -1050,10 +1093,10 @@ fn primitive_string_to_list(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Va
             |ch| Value::Char(ch as u8)
         ).collect()
     };
-    Ok(interp.heap.borrow_mut().alloc_list(&chars))
+    Ok(EvalResult::Done(interp.heap.borrow_mut().alloc_list(&chars)))
 }
 
-fn primitive_list_to_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_list_to_string(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, _id: Object);
     let chars = interp.fold_list(
         args[0], String::new(), |mut acc, item| {
@@ -1061,22 +1104,22 @@ fn primitive_list_to_string(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Va
             acc.push(ch);
             Ok(acc)
         })?;
-    Ok(interp.heap.borrow_mut().alloc_string(&chars))
+    Ok(EvalResult::Done(interp.heap.borrow_mut().alloc_string(&chars)))
 }
 
-fn primitive_string_length(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_length(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let string = interp.to_string(args[0])?;
-    Ok(Value::Number(Number::Int(string.len() as i64)))
+    Ok(EvalResult::Done(Value::Number(Number::Int(string.len() as i64))))
 }
 
-fn primitive_string_ref(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_ref(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     let string = interp.to_string(args[0])?;
     let index = interp.to_integer(args[1])?;
     if index >= 0 && index < (string.len() as i64) 
         && let Some(ch) = string.chars().nth(index as usize) {
-        return Ok(Value::Char(ch as u8));
+        Ok(EvalResult::Done(Value::Char(ch as u8)))
     } else {
         Err(SchemeError::IndexOutOfBounds(format!(
             "Index {} is not in 0..{}", index, string.len()
@@ -1084,7 +1127,7 @@ fn primitive_string_ref(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]
     }
 }
 
-fn primitive_string_set(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_set(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 3);
     let mut string = interp.to_string_mut(args[0])?;
     let index = interp.to_integer(args[1])?;
@@ -1093,7 +1136,7 @@ fn primitive_string_set(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]
         // TODO This is really horrible!
         string.remove(index as usize);
         string.insert(index as usize, value as char);
-        return Ok(args[0]);
+        Ok(EvalResult::Done(args[0]))
     } else {
         Err(SchemeError::IndexOutOfBounds(format!(
             "Index {} is not in 0..{}", index, string.len()
@@ -1101,12 +1144,12 @@ fn primitive_string_set(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]
     }
 }
 
-fn primitive_string_eq(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_eq(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa == sb))
+            Ok(EvalResult::Done(Value::Boolean(sa == sb)))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
@@ -1114,12 +1157,12 @@ fn primitive_string_eq(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])
     }
 }
 
-fn primitive_string_lt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_lt(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa < sb))
+            Ok(EvalResult::Done(Value::Boolean(sa < sb)))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
@@ -1127,12 +1170,12 @@ fn primitive_string_lt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])
     }
 }
 
-fn primitive_string_gt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_gt(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa > sb))
+            Ok(EvalResult::Done(Value::Boolean(sa > sb)))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
@@ -1140,12 +1183,12 @@ fn primitive_string_gt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])
     }
 }
 
-fn primitive_string_lte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_lte(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa <= sb))
+            Ok(EvalResult::Done(Value::Boolean(sa <= sb)))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
@@ -1153,12 +1196,12 @@ fn primitive_string_lte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]
     }
 }
 
-fn primitive_string_gte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_gte(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa >= sb))
+            Ok(EvalResult::Done(Value::Boolean(sa >= sb)))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
@@ -1166,12 +1209,12 @@ fn primitive_string_gte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]
     }
 }
 
-fn primitive_string_ci_eq(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_ci_eq(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa.to_ascii_lowercase() == sb.to_ascii_lowercase()))
+            Ok(EvalResult::Done(Value::Boolean(sa.to_ascii_lowercase() == sb.to_ascii_lowercase())))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
@@ -1179,48 +1222,48 @@ fn primitive_string_ci_eq(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Valu
     }
 }
 
-fn primitive_string_ci_lt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_ci_lt(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa.to_ascii_lowercase() < sb.to_ascii_lowercase()))
+            Ok(EvalResult::Done(Value::Boolean(sa.to_ascii_lowercase() < sb.to_ascii_lowercase())))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
         )))
     }
 }
-fn primitive_string_ci_lte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_ci_lte(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa.to_ascii_lowercase() <= sb.to_ascii_lowercase()))
+            Ok(EvalResult::Done(Value::Boolean(sa.to_ascii_lowercase() <= sb.to_ascii_lowercase())))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
         )))
     }
 }
-fn primitive_string_ci_gt(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_ci_gt(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa.to_ascii_lowercase() > sb.to_ascii_lowercase()))
+            Ok(EvalResult::Done(Value::Boolean(sa.to_ascii_lowercase() > sb.to_ascii_lowercase())))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
         )))
     }
 }
-fn primitive_string_ci_gte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_string_ci_gte(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, aid: Object, bid: Object);
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            Ok(Value::Boolean(sa.to_ascii_lowercase() >= sb.to_ascii_lowercase()))
+            Ok(EvalResult::Done(Value::Boolean(sa.to_ascii_lowercase() >= sb.to_ascii_lowercase())))
         },
         (xa, xb) => Err(SchemeError::TypeError(format!(
             "String comparion requires two String, got {} and {}", xa.type_name(), xb.type_name()
@@ -1228,8 +1271,8 @@ fn primitive_string_ci_gte(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Val
     }
 }
 
-fn primitive_string_append(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_string_append(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     let mut buf = String::new();
     for arg in args {
@@ -1237,11 +1280,11 @@ fn primitive_string_append(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Val
         buf.push_str(&string);
     }
     let mut heap = interp.heap.borrow_mut();
-    Ok(heap.alloc_string(buf))
+    Ok(EvalResult::Done(heap.alloc_string(buf)))
 }
 
-fn primitive_substring(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_substring(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     check_arity!(args, 3);
     let string = interp.to_string(args[0])?.to_string();
@@ -1256,20 +1299,23 @@ fn primitive_substring(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])
             "End index {} is not within {}..{}", end_index, start_index, string.len()
         )))
     } else {
-        Ok(interp.heap.borrow_mut().alloc_string(&string[start_index as usize..end_index as usize]))
+        Ok(EvalResult::Done(
+            interp.heap.borrow_mut()
+                .alloc_string(&string[start_index as usize..end_index as usize])
+        ))
     }
 }
 
-fn primitive_string_copy(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_string_copy(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     check_arity!(args, 1);
     let string = interp.to_string(args[0])?.to_string();
-    Ok(interp.heap.borrow_mut().alloc_string(string))
+    Ok(EvalResult::Done(interp.heap.borrow_mut().alloc_string(string)))
 }
 
-fn primitive_string_fill(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_string_fill(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     check_arity!(args, 2);
     let mut string = interp.to_string_mut(args[0])?.to_string();
@@ -1280,14 +1326,14 @@ fn primitive_string_fill(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value
     for _ in 0..count {
         string.push(ch);
     }
-    Ok(interp.heap.borrow_mut().alloc_string(string))
+    Ok(EvalResult::Done(interp.heap.borrow_mut().alloc_string(string)))
 }
 
 /**
  * IO primitives.
  */
-fn primitive_open_input_file(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_open_input_file(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     check_arity!(args, 1);
     let filename = interp.to_string(args[0])?.to_string();
@@ -1298,11 +1344,11 @@ fn primitive_open_input_file(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[V
     let reader = BufReader::new(file);
     let boxed_reader: Box<dyn BufRead> = Box::new(reader);
     let input = Rc::new(RefCell::new(Some(boxed_reader)));
-    Ok(interp.heap.borrow_mut().alloc_input_port(input))
+    Ok(EvalResult::Done(interp.heap.borrow_mut().alloc_input_port(input)))
 }
 
-fn primitive_close_input_port(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_close_input_port(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     check_arity!(args, 1);
     let input = interp.to_input_port(args[0])?;
@@ -1310,11 +1356,11 @@ fn primitive_close_input_port(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[
     if ! reader.is_none() {
         println!("File closed.");
     } 
-    Ok(Value::Nil)
+    Ok(EvalResult::Done(Value::Nil))
 }
 
-fn primitive_read_char(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_read_char(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     check_arity!(args, 1);
     let input = interp.to_input_port(args[0])?;
@@ -1323,10 +1369,10 @@ fn primitive_read_char(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])
         let mut buf = [0u8; 1];
         match reader.read_exact(&mut buf) {
             Ok(_) => {
-                Ok(Value::Char(buf[0]))
+                Ok(EvalResult::Done(Value::Char(buf[0])))
             },
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                Ok(Value::Eof)
+                Ok(EvalResult::Done(Value::Eof))
             },
             Err(e) => {
                 Err(SchemeError::IOError(format!("Read error {}", e)))
@@ -1339,15 +1385,15 @@ fn primitive_read_char(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])
     }
 }
 
-fn primitive_eof_object(_interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_eof_object(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     check_arity!(args, 1);
-    Ok(Value::Boolean(args[0] == Value::Eof))
+    Ok(EvalResult::Done(Value::Boolean(args[0] == Value::Eof)))
 }
 
-fn primitive_gc(interp: &Interp, env: &Rc<RefCell<Env>>, _args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_gc(interp: &Interp, env: Rc<RefCell<Env>>, _args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     // Marks all reachable objects from the environment and the heap's symbols.
     let len = interp.heap.borrow().len();
@@ -1361,10 +1407,12 @@ fn primitive_gc(interp: &Interp, env: &Rc<RefCell<Env>>, _args: &[Value])
 
     println!("gc: marked {} /{} objects, collected {}.", marks.count(), len, collected);   
 
-    Ok(Value::Nil)
+    Ok(EvalResult::Done(Value::Nil))
 }
 
-fn primitive_debug(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> Result<Value, SchemeError> {
+fn primitive_debug(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
     for (i, arg) in args.iter().enumerate() {
         if i > 0 {
             print!(" ");
@@ -1372,11 +1420,11 @@ fn primitive_debug(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) -> 
         print!("{}", interp.display(*arg))
     }
     println!();
-    Ok(Value::Boolean(true))
+    Ok(EvalResult::Done(Value::Boolean(true)))
 }
 
-fn primitive_load(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_load(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     // TODO SyntaxError don't seem to come all theway back here.
     let mut retval = Value::Nil;
@@ -1384,11 +1432,11 @@ fn primitive_load(interp: &Interp, _env: &Rc<RefCell<Env>>, args: &[Value])
         let filename = interp.to_string(*arg)?.to_string();
         retval = interp.load(&filename)?;
     }
-    Ok(retval)
+    Ok(EvalResult::Done(retval))
 }
 
-fn primitive_heap_stats(interp: &Interp, _env: &Rc<RefCell<Env>>, _args: &[Value]) 
-    -> Result<Value, SchemeError> 
+fn primitive_heap_stats(interp: &Interp, _env: Rc<RefCell<Env>>, _args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
 {
     let stats = interp.heap.borrow().stats();
     println!("Total slots: {}", stats.total_slots);
@@ -1396,5 +1444,5 @@ fn primitive_heap_stats(interp: &Interp, _env: &Rc<RefCell<Env>>, _args: &[Value
     println!(" Free slots: {}", stats.free_slots);
     println!("  Next slot: {}", stats.next_slot);
     println!("    Symbols: {}", stats.symbol_count);
-    Ok(Value::Nil)
+    Ok(EvalResult::Done(Value::Nil))
 }
