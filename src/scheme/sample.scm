@@ -1,4 +1,5 @@
 
-(define (loop start end)
-    (if (>= start end) end (loop (+ start 1) end))
+(define counter
+    (let ((value 0))
+        (lambda () (set! value (+ value 1)) value))
 )

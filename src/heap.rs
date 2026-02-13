@@ -181,14 +181,14 @@ impl Keyword {
                                 params: params.into_boxed_slice(),
                                 body: body.to_vec().into_boxed_slice(),
                                 tail: *tail,
-                                env: Rc::clone(&interp.env),
+                                env: env,
                             })))
                         } else {
                             Ok(EvalResult::Done(heap.alloc_closure(Closure {
                                 params: params.into_boxed_slice(),
                                 body: body.to_vec().into_boxed_slice(),
                                 tail: *tail,
-                                env: Rc::clone(&interp.env),
+                                env: env,
                             })))
                         }
                     },
