@@ -25,5 +25,10 @@
 (assert-equal #(1 2 3) (list->vector '(1 2 3)))
 (assert-equal #(0 0 0) (let ((v #(1 2 3))) (vector-fill! v 0) v))
 
+;; Test apply.
+(assert-equal 6 (apply + '(1 2 3)))
+(assert-equal 6 (apply + 1 2 '(3)))
+(assert-equal 1 (apply + 1 (list)))
+(assert-equal 1 (apply + 1 ()))
 
 ; (assert-equal 1 2)

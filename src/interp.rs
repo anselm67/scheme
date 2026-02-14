@@ -614,7 +614,17 @@ fn primitive_apply(interp: &Interp, env: Rc<RefCell<Env>>, args: &[Value])
     use crate::heap::Apply;
     check_min_arity!(args, 2);
     let func = args[0];
-    func.apply(interp, env, args[1..].to_vec())
+    let (last, firsts) = args[1..].split_last().ok_or(
+        SchemeError::ArgCountError(format!(
+            "Expected at least 2 args, got {}", args.len()
+        ))
+    )?;
+    let all_args = interp.fold_list(
+        *last, 
+        firsts.to_vec(), 
+        |mut acc, arg| { acc.push(arg); Ok(acc)}
+    )?;
+    func.apply(interp, env, all_args)
 }
 
 fn primitive_expand(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  -> Result<EvalResult, SchemeError> {
