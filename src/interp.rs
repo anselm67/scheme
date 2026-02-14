@@ -1,7 +1,7 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::process;
 use std::rc::Rc;
@@ -176,6 +176,10 @@ impl Interp {
         self.define_primitive("close-input-port", primitive_close_input_port);
         self.define_primitive("read-char", primitive_read_char);
         self.define_primitive("eof-object?", primitive_eof_object);
+        self.define_primitive("open-output-file", primitive_open_output_file);
+        self.define_primitive("close-output-port", primitive_close_output_port);
+        self.define_primitive("write-char", primitive_write_char);
+        self.define_primitive("flush-output-port", primitive_flush_output_port);
 
         // Initialize system primitive functions.
         self.define_primitive("gc", primitive_gc);
@@ -381,6 +385,24 @@ impl Interp {
         Ref::filter_map(heap, |h| {
             if let HeapObject::InputPort(input) = h.get(id) {
                 Some(input)
+            } else {
+                None
+            }
+        }).map_err(|_| {
+            SchemeError::TypeError(format!(
+                "Expected an InputPort, but got a {}", value.type_name()
+            ))
+        })        
+    }
+
+    pub fn to_output_port(&self, value: Value) 
+        -> Result<Ref<'_,Rc<RefCell<Option<Box<dyn Write>>>>>, SchemeError> 
+    {
+        let id = self.to_object(value)?;
+        let heap = self.heap.borrow();
+        Ref::filter_map(heap, |h| {
+            if let HeapObject::OutputPort(output) = h.get(id) {
+                Some(output)
             } else {
                 None
             }
@@ -1378,6 +1400,68 @@ fn primitive_eof_object(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]
 {
     check_arity!(args, 1);
     EvalResult::done(Value::Boolean(args[0] == Value::Eof))
+}
+
+fn primitive_open_output_file(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 1);
+    let filename = interp.to_string(args[0])?.to_string();
+    let file= File::create(filename.clone()).map_err(|e| {
+        SchemeError::FileNotFound(format!("Couldn't open file {} for writing: {}", filename, e))
+    })?;
+    let writer : Box<dyn Write> = Box::new(BufWriter::new(file));
+    let output = Rc::new(RefCell::new(Some(writer)));
+    EvalResult::done(interp.heap.borrow_mut().alloc_output_port(output))
+}
+
+fn primitive_close_output_port(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 1);
+    let output = interp.to_output_port(args[0])?;
+    let writer = output.borrow_mut().take();
+    if ! writer.is_none() {
+        println!("File closed.");
+    } 
+    EvalResult::done(Value::Nil)
+}
+
+fn primitive_flush_output_port(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 1);
+    let output = interp.to_output_port(args[0])?;
+    let mut guard = output.borrow_mut();
+    if let Some(writer) = guard.as_deref_mut() {
+        writer.flush().map_err(|e| {
+            SchemeError::IOError(format!("Failed to flush output port: {}", e))
+        })?;
+        EvalResult::done(Value::Nil)
+    } else {
+        Err(SchemeError::IOError(format!(
+            "Attempt to write to a closed output port."
+        )))
+    }
+}
+
+fn primitive_write_char(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 2);
+    let output = interp.to_output_port(args[0])?;
+    let ch = interp.to_char(args[1])?;
+    let mut guard = output.borrow_mut();
+    if let Some(writer) = guard.as_deref_mut() {
+        write!(writer, "{}", ch).map_err(|e| {
+            SchemeError::IOError(format!("write to output port failed: {}", e))
+        })?;
+        EvalResult::done(Value::Nil)
+    } else {
+        Err(SchemeError::IOError(format!(
+            "Attempt to write to a closed output port."
+        )))
+    }
 }
 
 fn primitive_gc(interp: &Interp, env: Rc<RefCell<Env>>, _args: &[Value]) 

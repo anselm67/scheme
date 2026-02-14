@@ -423,6 +423,14 @@ impl Heap {
         Value::Object(id)
     }
 
+    pub fn alloc_output_port(&mut self, output: Rc<RefCell<Option<Box<dyn Write>>>>) 
+        -> Value 
+    {
+        let id = self.next_id();
+        self.objects[id] = HeapObject::OutputPort(output);
+        Value::Object(id)
+    }
+
     pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
         for id in self.symbols.values() {
             id.mark(interp, marks);
