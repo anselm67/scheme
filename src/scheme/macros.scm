@@ -18,9 +18,22 @@
 )
 
  
-(define-syntax let
-    (lambda (bindings . body)
-        `((lambda ,(map car bindings) ,@body) ,@(map cadr bindings)))
+(define named_let_
+    (lambda (name bindings body) 
+        `(letrec ((,name (lambda ,(map car bindings) ,@body))) 
+            (,name ,@(map cadr bindings)) ) )
+)
+
+(define regular_let_
+    (lambda (bindings body)
+            `((lambda ,(map car bindings) ,@body) ,@(map cadr bindings)))
+)
+
+(define-syntax let 
+    (lambda args 
+        (if (symbol? (car args))
+            (named_let_ (car args) (cadr args) (cddr args))
+            (regular_let_ (car args) (cdr args))))
 )
 
 (define-syntax letrec
@@ -33,6 +46,8 @@
             ,@(map (lambda (varval) (list 'set! (car varval) (cadr varval))) bindings)
             ,@body)
 ))
+
+
 
 (define-syntax begin (lambda exprs `((lambda () ,@exprs))))
 
