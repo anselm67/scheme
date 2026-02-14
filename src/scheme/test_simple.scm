@@ -2,6 +2,10 @@
 
 (load "src/scheme/macros.scm")
 
+;; Testing lists
+(assert-equal '(3 2 1) (reverse '(1 2 3)))
+(assert-equal '() (reverse '()))
+
 (assert-equal 1 1)
 (assert-equal '(1 2) (list 1 2))
 

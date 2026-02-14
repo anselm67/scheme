@@ -11,22 +11,21 @@
     )
 )
 
-(define (map fn list) 
+(define (map_one_ fn list) 
     (if (null? list) 
         ()
-        (cons (fn (car list)) (map fn (cdr list))))
+        (cons (fn (car list)) (map_one_ fn (cdr list))))
 )
 
- 
 (define named_let_
     (lambda (name bindings body) 
-        `(letrec ((,name (lambda ,(map car bindings) ,@body))) 
-            (,name ,@(map cadr bindings)) ) )
+        `(letrec ((,name (lambda ,(map_one_ car bindings) ,@body))) 
+            (,name ,@(map_one_ cadr bindings)) ) )
 )
 
 (define regular_let_
     (lambda (bindings body)
-            `((lambda ,(map car bindings) ,@body) ,@(map cadr bindings)))
+            `((lambda ,(map_one_ car bindings) ,@body) ,@(map_one_ cadr bindings)))
 )
 
 (define-syntax let 
@@ -42,11 +41,10 @@
         ; (let ((vars (map car bindings)) (vals (cadr bindings)) 
         ;     ...
         ;     ,@(map (lambda (var val) (list 'set! var val)) vars vals)))
-        `(let ,(map (lambda (varval) (list (car varval) ''*undefined*)) bindings) 
-            ,@(map (lambda (varval) (list 'set! (car varval) (cadr varval))) bindings)
+        `(let ,(map_one_ (lambda (varval) (list (car varval) ''*undefined*)) bindings) 
+            ,@(map_one_ (lambda (varval) (list 'set! (car varval) (cadr varval))) bindings)
             ,@body)
 ))
-
 
 
 (define-syntax begin (lambda exprs `((lambda () ,@exprs))))
@@ -69,3 +67,21 @@
     (if (equal? object value) #t (error "test failed."))
 )
 
+(define (reverse lst)
+    (let loop ((remaining lst) (acc '()))
+        (if (null? remaining)
+            acc
+            (loop (cdr remaining) (cons (car remaining) acc)))
+    )   
+)
+
+(define (map-cars lists) (map_one_ car lists))
+(define (map-cdrs lists) (map_one_ cdr lists))
+
+(define (map proc . lists) 
+    (let loop ((lists lists) (acc '()))    
+        (if (null? (car lists))
+            (reverse acc)
+            (loop (map-cdrs lists) (cons (apply proc (map-cars lists) acc)))))
+)
+ 
