@@ -24,6 +24,12 @@ pub enum EvalResult {
     Done(Value),
     Continuation(Rc<RefCell<Env>>, Value)
 }
+
+impl EvalResult {
+    pub fn done(value: Value) -> Result<EvalResult, SchemeError> {
+        Ok(EvalResult::Done(value))
+    }
+}
 pub trait SchemeObject {
     fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError>;
     fn is_false(&self) -> bool;
