@@ -151,7 +151,7 @@ impl Keyword {
         match keyword {
             Keyword::If => {
                 check_arity!(args, 3);
-                let condition = interp.eval_full(env.clone(), args[0])?;
+                let condition = interp.eval(env.clone(), args[0])?;
                 match condition {
                     Value::Boolean(false) => Ok(EvalResult::Continuation(env, args[2])),
                     _ => Ok(EvalResult::Continuation(env, args[1])),
@@ -160,14 +160,14 @@ impl Keyword {
             Keyword::DefineBang => {
                 check_arity!(args, 2);
                 let symbol = interp.to_object(args[0])?;
-                let value = interp.eval_full(env.clone(), args[1])?;
+                let value = interp.eval(env.clone(), args[1])?;
                 env.borrow_mut().define(symbol, value);
                 Ok(EvalResult::Done(Value::Nil))
             },
             Keyword::DefineSyntax => {
                 check_arity!(args, 2);
                 let symbol = interp.to_symbol(args[0])?;
-                let value = interp.eval_full(env.clone(), args[1])?;
+                let value = interp.eval(env.clone(), args[1])?;
                 env.borrow_mut().define_syntax(symbol, value);
                 Ok(EvalResult::Done(Value::Nil))
             },
@@ -209,7 +209,7 @@ impl Keyword {
             Keyword::SetBang => {
                 check_arity!(args, 2);
                 let var = args[0];
-                let value = interp.eval_full(env.clone(), args[1])?;
+                let value = interp.eval(env.clone(), args[1])?;
                 if let Value::Object(var_id) = var {
                     Env::set_bang(env.clone(), var_id, value)?;
                     Ok(EvalResult::Done(value))
@@ -475,7 +475,7 @@ impl Apply for Value {
     
         match obj {
             HeapObject::Pair(car, _) => {
-                let func = interp.eval_full(env.clone(), car)?;
+                let func = interp.eval(env.clone(), car)?;
                 func.apply(interp, env, args)
             },
             HeapObject::Closure(closure) => {
@@ -485,7 +485,7 @@ impl Apply for Value {
                     new_env.borrow_mut().define(*param_id, *arg_value);
                 }
                 for expr in &closure.body {
-                    interp.eval_full(new_env.clone(), *expr)?;
+                    interp.eval(new_env.clone(), *expr)?;
                 }
                 Ok(EvalResult::Continuation(new_env, closure.tail))
             },
@@ -504,7 +504,7 @@ impl Apply for Value {
                 let rest = interp.heap.borrow_mut().alloc_list(&args[index..]);
                 new_env.borrow_mut().define(closure.params[index], rest);
                 for expr in &closure.body {
-                    interp.eval_full(new_env.clone(), *expr)?;
+                    interp.eval(new_env.clone(), *expr)?;
                 }
                 Ok(EvalResult::Continuation(new_env, closure.tail))
             },
@@ -554,11 +554,11 @@ impl SchemeObject for GcId {
                         cdr,
                         Vec::new(), 
                         |mut acc, arg| {
-                            let value = interp.eval_full(env.clone(), arg)?;
+                            let value = interp.eval(env.clone(), arg)?;
                             acc.push(value);
                             Ok(acc)
                         });
-                    let func = interp.eval_full(env.clone(), car)?;
+                    let func = interp.eval(env.clone(), car)?;
                     func.apply(interp, env.clone(), args?)
                 }
             },

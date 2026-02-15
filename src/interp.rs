@@ -225,13 +225,6 @@ impl Interp {
         }
     }
 
-    // TODO Remove this function all together.
-    pub fn eval_full(&self, env: Rc<RefCell<Env>>, obj: Value)  
-        -> Result<Value, SchemeError> 
-    {
-        self.eval(env, obj)
-    }
-
     pub fn display(&self, obj: Value) -> String {
         let wrapper = DisplayWrapper{ obj: &obj, interp: self };
         wrapper.to_string()
@@ -612,7 +605,7 @@ impl Interp {
                 Value::Eof => return Ok(retval),
                 expr => {
                     retval = self.expand(expr)?;
-                    retval = self.eval_full(self.env.clone(), retval)?;
+                    retval = self.eval(self.env.clone(), retval)?;
                 },
             }
         }

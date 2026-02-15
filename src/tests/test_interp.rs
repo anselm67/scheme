@@ -3,7 +3,7 @@ use crate::{interp::Interp, parser::Parser, types::{Number, SchemeError, Value}}
 
 fn eval_expr(interp: &Interp, expr: Value) {
     interp.display(expr);
-    let result = interp.eval_full(interp.env.clone(), expr);
+    let result = interp.eval(interp.env.clone(), expr);
     match result {
         Ok(val) => println!("{}", interp.display(val)),
         Err(e) => eprintln!("Error: {:?}", e),
@@ -16,7 +16,7 @@ fn check_exprs(interp: &Interp, inputs: &Vec<(&str, Value)>) {
         let expr = parser.read(&interp);
         match expr {
             Ok(expr) => {
-                match interp.eval_full(interp.env.clone(), expr) {
+                match interp.eval(interp.env.clone(), expr) {
                     Ok(value) => assert_eq!(value, *expected),
                     Err(e) => panic!("Eval {} failed with error: {:?}", text, e)
                 }
