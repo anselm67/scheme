@@ -35,4 +35,7 @@
 (assert-equal 1 (apply + 1 (list)))
 (assert-equal 1 (apply + 1 ()))
 
-; (assert-equal 1 2)
+;; Test error handling
+(assert-equal 1 (catch (lambda (e) 1) (error "foo")))
+(assert-equal 1 (catch (lambda (e) 2) 3 4 1))
+

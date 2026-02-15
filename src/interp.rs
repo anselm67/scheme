@@ -78,7 +78,7 @@ impl Interp {
         self.define_primitive("eq?", primitive_eq);
         self.define_primitive("equal?", primitive_equal);
         self.define_primitive("error", primitive_error);
-
+        self.define_primitive("with-exception-handler", primitive_with_exception_handler);
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
 
@@ -222,6 +222,17 @@ impl Interp {
                     current_env = next_env;
                 }
             }
+        }
+    }
+
+    pub fn apply(&self, env: Rc<RefCell<Env>>, f: Value, args: Vec<Value>)
+        -> Result<Value, SchemeError> 
+    {
+        match f.apply(self, env.clone(), args)? {
+            EvalResult::Done(value) => return Ok(value),
+            EvalResult::Continuation(next_env, next_expr) => {
+                self.eval(next_env, next_expr)
+             }
         }
     }
 
@@ -657,10 +668,30 @@ fn primitive_eq(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])
     EvalResult::done(Value::Boolean(args[0] == args[1]))
 }
 
-fn primitive_error(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  -> Result<EvalResult, SchemeError> {
+fn primitive_error(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
     check_arity!(args, 1);
     let string = interp.to_string(args[0])?.to_string();
     Err(SchemeError::UserError(string))
+}
+
+fn primitive_with_exception_handler(interp: &Interp, env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 2);
+    let handler = args[0];
+    let thunk = args[1];
+    match interp.apply(env.clone(), thunk, vec![]) {
+        Ok(value) => EvalResult::done(value),
+        Err(e) => {
+            let (label, message) = e.get_infos();
+            let string = interp.heap.borrow_mut().alloc_string(
+                 format!("[{}]: {}", label, message)
+            );
+            EvalResult::done(interp.apply(env.clone(), handler, vec![ string ])?)
+        }
+    }
 }
 
 fn primitive_symbol_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  -> Result<EvalResult, SchemeError> {

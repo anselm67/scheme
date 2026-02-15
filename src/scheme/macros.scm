@@ -63,6 +63,11 @@
     )
 )
 
+(define-syntax catch
+    (lambda (handler . body)
+        `(with-exception-handler ,handler (lambda () ,@body)))
+)
+
 (define (assert-equal object value)
     (if (equal? object value) #t (error "test failed."))
 )

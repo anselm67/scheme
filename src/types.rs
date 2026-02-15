@@ -20,9 +20,10 @@ pub enum SchemeError {
     // Other error types can be added here
 }
 
-impl fmt::Display for SchemeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (label, message) = match self {
+impl SchemeError {
+
+    pub fn get_infos<'a>(&'a self) -> (&'static str, &'a str) {
+        match self {
             SchemeError::EvalError(m) => ("Evaluation error", m),
             SchemeError::TypeError(m) => ("Type error", m),
             SchemeError::UnboundVariable(m) => ("Unbound variable", m),
@@ -34,8 +35,12 @@ impl fmt::Display for SchemeError {
             SchemeError::UserError(m) => ("User error", m),
             SchemeError::IndexOutOfBounds(m) => ("Index out of bounds", m),
             SchemeError::IOError(m) => ("I/O error", m),
-        };
-        
+        }
+    }
+}
+impl fmt::Display for SchemeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (label, message) = self.get_infos();
         write!(f, "[{}]: {}", label, message)
     }
 }
