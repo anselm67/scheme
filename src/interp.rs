@@ -1740,6 +1740,7 @@ fn primitive_debug(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])
             write!(port, "{}", interp.display(*arg))?;
         }
         writeln!(port)?;
+        port.flush()?;
     }
     EvalResult::done(Value::Boolean(true))
 }

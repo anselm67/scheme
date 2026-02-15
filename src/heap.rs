@@ -667,6 +667,8 @@ impl SchemeObject for GcId {
                 closure.tail.mark(interp, marks);
                 closure.env.borrow().mark(interp, marks);
             },
+            HeapObject::InputPort(_) => {},
+            HeapObject::OutputPort(_) => {},
             _ => {
                 panic!("Request to mark a {}.", obj.type_name());
             }

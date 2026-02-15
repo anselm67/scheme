@@ -2,6 +2,8 @@
 
 (define! cadr (lambda (l) (car (cdr l))))
 (define! cddr (lambda (l) (cdr (cdr l))))
+(define! caar (lambda (l) (car (car l))))
+(define! cdar (lambda (l) (cdr (car l))))
 
 (define-syntax define 
     (lambda (name_and_params . body) 
@@ -66,6 +68,16 @@
 (define-syntax catch
     (lambda (handler . body)
         `(with-exception-handler ,handler (lambda () ,@body)))
+)
+
+(define-syntax cond 
+    (lambda clauses
+        (if (null? clauses)
+            () 
+            `(if ,(caar clauses) 
+                (begin ,@(cdar clauses))
+                (cond ,@(cdr clauses))))
+    )
 )
 
 (define (assert-equal object value)
