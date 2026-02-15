@@ -17,7 +17,7 @@ fn eval_expr(interp: &Interp, expr: Value) {
         Ok(val) => {
             println!(" = {}", interp.display(val));
         },
-        Err(e) => eprintln!("Error: {:?}", e),
+        Err(e) => eprintln!("{}", e),
     }
 }
 

@@ -605,22 +605,18 @@ impl Interp {
     }
 
     pub fn load<P: AsRef<Path>>(&self, path: P) -> Result<Value, SchemeError> {
-        let path = path.as_ref(); // Convert P into a &Path
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
-    
-        let mut parser = Parser::new(content.as_bytes());
-        let mut retval = Value::Nil;
-        while let Ok(expr) = parser.read(self) {
-            if matches!(expr, Value::Nil) {
-                break;
+        let mut parser = Parser::from_file(path)?;
+        let mut retval = Value::Eof;
+        loop {
+            match parser.read(self)? {
+                Value::Eof => return Ok(retval),
+                expr => {
+                    retval = self.expand(expr)?;
+                    retval = self.eval_full(self.env.clone(), retval)?;
+                },
             }
-            retval = self.expand(expr)?;
-            retval = self.eval_full(self.env.clone(), retval)?;
         }
-        Ok(retval)
     }
-
 }
 
 fn primitive_eval(interp: &Interp, env: Rc<RefCell<Env>>, args: &[Value])  
@@ -1498,7 +1494,6 @@ fn primitive_debug(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])
 fn primitive_load(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
     -> Result<EvalResult, SchemeError> 
 {
-    // TODO SyntaxError don't seem to come all theway back here.
     let mut retval = Value::Nil;
     for arg in args {
         let filename = interp.to_string(*arg)?.to_string();

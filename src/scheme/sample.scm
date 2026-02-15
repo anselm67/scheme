@@ -1,4 +1,6 @@
 
+(load "src/scheme/macros.scm")
+
 (define (tail start end) 
     (debug start ".." end)
     (if (< start end) 

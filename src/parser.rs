@@ -1,10 +1,13 @@
 use std::io::{BufReader, Bytes, Read};
 use std::iter::Peekable;
+use std::path::{Path, PathBuf};
 
 use crate::interp::Interp;
 use crate::types::{Number, SchemeError, Value};
 
 pub struct Parser<R: Read> {
+    path: Option<PathBuf>,
+    lineno: i64,
     reader: Peekable<Bytes<BufReader<R>>>,
 }
 
@@ -12,6 +15,8 @@ impl<R: Read> Parser<R> {
     
     pub fn new(reader: R) -> Self {
         Self {
+            path: None,
+            lineno: 1,
             reader: BufReader::new(reader).bytes().peekable(),
         }
     }
@@ -21,11 +26,21 @@ impl<R: Read> Parser<R> {
     }
 
     fn next(&mut self) -> Option<u8> {
-        self.reader.next()?.ok()
+        let ch = self.reader.next()?.ok();
+        if let Some(lf) = ch && lf == b'\n' {
+            self.lineno += 1;
+        }
+        ch
     }
 
     fn syntax_error(&self, msg: String) -> Result<Value, SchemeError> {
-        Err(SchemeError::SyntaxError(format!("Syntax error: {}", msg)))
+        let path_str = if let Some(ref path) = self.path { 
+            path.to_string_lossy().to_string() 
+        } else { 
+            "unknown".to_string()
+        };
+        Err(SchemeError::SyntaxError(format!("{}:{}: syntax error: {}", 
+            path_str, self.lineno, msg)))
     }
 
     fn check_for(&mut self, expected: u8) -> Result<Value, SchemeError> {
@@ -319,8 +334,21 @@ impl<R: Read> Parser<R> {
                 self.next();
                 self.syntax_error(format!("Unexpected character {}", ch as char))
             },
-            None => Ok(Value::Nil),
+            None => Ok(Value::Eof),
         };
+    }
+}
+
+impl Parser<std::fs::File> {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, SchemeError> {
+        let path = path.as_ref();
+        let file = std::fs::File::open(path)
+            .map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
+        Ok(Self {
+            path: Some(path.to_path_buf()),
+            lineno: 1,
+            reader: BufReader::new(file).bytes().peekable()
+        })
     }
 }
 

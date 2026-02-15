@@ -24,6 +24,7 @@ fn test_parse_fails() {
 
     let inputs = vec![
         "(* 2 3",
+        "(define! x \\#a)"
     ];
     for text in inputs {
         let mut parser = Parser::new(text.as_bytes());

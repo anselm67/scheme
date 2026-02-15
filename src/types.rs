@@ -20,6 +20,29 @@ pub enum SchemeError {
     // Other error types can be added here
 }
 
+impl fmt::Display for SchemeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (label, message) = match self {
+            SchemeError::EvalError(m) => ("Evaluation error", m),
+            SchemeError::TypeError(m) => ("Type error", m),
+            SchemeError::UnboundVariable(m) => ("Unbound variable", m),
+            SchemeError::SyntaxError(m) => ("Syntax error", m),
+            SchemeError::ImplementationError(m) => ("Internal error", m),
+            SchemeError::ArgCountError(m) => ("Argument count Error", m),
+            SchemeError::OverflowError(m) => ("Numeric overflow", m),
+            SchemeError::FileNotFound(m) => ("File not found", m),
+            SchemeError::UserError(m) => ("User error", m),
+            SchemeError::IndexOutOfBounds(m) => ("Index out of bounds", m),
+            SchemeError::IOError(m) => ("I/O error", m),
+        };
+        
+        write!(f, "[{}]: {}", label, message)
+    }
+}
+
+// It is also good practice to implement the Error trait
+impl std::error::Error for SchemeError {}
+
 pub enum EvalResult {
     Done(Value),
     Continuation(Rc<RefCell<Env>>, Value)
