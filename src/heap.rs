@@ -450,7 +450,7 @@ impl Heap {
         self.free_slot = id;
     }
 
-    pub fn collect(&mut self, marks: &MarkSet) -> usize {
+    pub fn sweep(&mut self, marks: &MarkSet) -> usize {
         let mut count = 0;
         // Display the objects we'd like to kill:
         for id in 0..marks.len() {

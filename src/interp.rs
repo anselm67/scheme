@@ -10,12 +10,16 @@ use crate::env::Env;
 use crate::heap::{Apply, Closure, HeapObject, Keyword, Vector};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
-use crate::{all_of_type, check_arity, check_min_arity, extract_args, heap};
+use crate::{all_of_type, check_arity, check_arity_range, check_min_arity, extract_args, heap};
 use crate::types::{DisplayWrapper, EvalResult, GcId, Number, SchemeError, SchemeObject, Value};
 
 pub struct Interp {
     pub heap: RefCell<heap::Heap>,
     pub env: Rc<RefCell<crate::env::Env>>,
+
+    // IO ports
+    input_stack: RefCell<Vec<Value>>,
+    output_stack: RefCell<Vec<Value>>,
 
     // Some symbols we want to keeep track of:
     append: Value,
@@ -23,6 +27,16 @@ pub struct Interp {
     quasiquote: Value,
     unquote: Value,
     unquote_splicing: Value,
+}
+
+struct PortGuard<'a> {
+    stack: &'a RefCell<Vec<Value>>,
+}
+
+impl<'a> Drop for PortGuard<'a> {
+    fn drop(&mut self) {
+        self.stack.borrow_mut().pop();
+    }
 }
 
 impl Interp {
@@ -48,14 +62,105 @@ impl Interp {
             heap: heap_handle,
             env: env_handle,
 
+            input_stack: RefCell::new(vec![]),
+            output_stack: RefCell::new(vec![]),
+
             list: list,
             append: append,
             quasiquote: quasiquote,
             unquote: unquote,
             unquote_splicing: unquote_splicing
         };  
+        interp.init_io();
         interp.init();
         interp
+    }
+
+    fn init_io(&self) {
+        let mut heap = self.heap.borrow_mut();
+
+        // Sets up stdin as the default input port.
+        let boxed_reader: Box<dyn BufRead> = Box::new(BufReader::new(std::io::stdin()));
+        let input_port = heap.alloc_input_port(
+            Rc::new(RefCell::new(Some(boxed_reader)))
+        );
+        self.input_stack.borrow_mut().push(input_port);
+
+        // Sets up stdout as the default output port.
+        let boxed_writer: Box<dyn Write> = Box::new(BufWriter::new(std::io::stdout()));
+        let output_port = heap.alloc_output_port(
+            Rc::new(RefCell::new(Some(boxed_writer)))
+        );
+        self.output_stack.borrow_mut().push(output_port)
+    }
+
+    fn with_input_port<F, T>(&self, value: Value, thunk: F) 
+        -> Result<T, SchemeError>
+        where F: FnOnce() -> Result<T, SchemeError>
+    {
+        let _port = self.to_input_port(value)?;
+        self.input_stack.borrow_mut().push(value);
+        let _guard = PortGuard { stack: &self.input_stack };
+        thunk()
+    }
+
+    fn with_output_port<F, T>(&self, value: Value, thunk: F) 
+        -> Result<T, SchemeError>
+        where F: FnOnce() -> Result<T, SchemeError>
+    {
+        let _port = self.to_output_port(value)?;
+        self.output_stack.borrow_mut().push(value);
+        let _guard = PortGuard { stack: &self.input_stack };
+        thunk()
+    }
+
+    pub fn get_input_port_as_value(&self) 
+        -> Result<Value, SchemeError> 
+    {
+        if let Some(value) = self.input_stack.borrow().last() {
+            Ok(*value)
+        } else {
+            panic!("No input port on the input stack!");
+        }
+    }
+
+    pub fn get_input_port(&self) 
+        -> Result<Rc<RefCell<Option<Box<dyn BufRead>>>>, SchemeError> 
+    {
+        if let Some(value) = self.input_stack.borrow().last() {
+             self.to_input_port(*value)
+        } else {
+            panic!("No input port on the input stack!");
+        }
+    }
+
+    pub fn get_output_port_as_value(&self) 
+        -> Result<Value, SchemeError> 
+    {
+        if let Some(value) = self.output_stack.borrow().last() {
+            Ok(*value)
+        } else {
+            panic!("No output port on the input stack!");
+        }
+    }
+    pub fn get_output_port(&self) 
+        -> Result<Rc<RefCell<Option<Box<dyn Write>>>>, SchemeError> 
+    {
+        if let Some(value) = self.output_stack.borrow().last() {
+             self.to_output_port(*value)
+        } else {
+            panic!("No output port on the input stack!");
+        }
+    }
+
+    fn mark(&self, marks: &mut MarkSet) {
+        self.heap.borrow().mark(self, marks);
+        for port in self.input_stack.borrow().iter() {
+            port.mark(self, marks);
+        }
+        for port in self.output_stack.borrow().iter() {
+            port.mark(self, marks);
+        }
     }
 
     pub fn define(&self, name: &str, value: Value) -> Value {
@@ -177,12 +282,17 @@ impl Interp {
         // IO primitive functions.
         self.define_primitive("open-input-file", primitive_open_input_file);
         self.define_primitive("close-input-port", primitive_close_input_port);
+        self.define_primitive("read", primitive_read);
         self.define_primitive("read-char", primitive_read_char);
         self.define_primitive("eof-object?", primitive_eof_object);
         self.define_primitive("open-output-file", primitive_open_output_file);
         self.define_primitive("close-output-port", primitive_close_output_port);
         self.define_primitive("write-char", primitive_write_char);
         self.define_primitive("flush-output-port", primitive_flush_output_port);
+        self.define_primitive("with-output-port", primitive_with_output_port);
+        self.define_primitive("with-input-port", primitive_with_input_port);
+        self.define_primitive("current-output-port", primitive_current_output_port);
+        self.define_primitive("current-input-port", primitive_current_input_port);
 
         // Initialize system primitive functions.
         self.define_primitive("gc", primitive_gc);
@@ -403,39 +513,29 @@ impl Interp {
     }
 
     pub fn to_input_port(&self, value: Value) 
-        -> Result<Ref<'_,Rc<RefCell<Option<Box<dyn BufRead>>>>>, SchemeError> 
+        -> Result<Rc<RefCell<Option<Box<dyn BufRead>>>>, SchemeError> 
     {
         let id = self.to_object(value)?;
         let heap = self.heap.borrow();
-        Ref::filter_map(heap, |h| {
-            if let HeapObject::InputPort(input) = h.get(id) {
-                Some(input)
-            } else {
-                None
-            }
-        }).map_err(|_| {
-            SchemeError::TypeError(format!(
-                "Expected an InputPort, but got a {}", value.type_name()
-            ))
-        })        
+        match heap.get(id) {
+            HeapObject::InputPort(input) => Ok(input.clone()),
+            _ => Err(SchemeError::TypeError(format!(
+                    "Expected an InputPort, but got a {}", value.type_name()
+                ))),
+        }
     }
 
     pub fn to_output_port(&self, value: Value) 
-        -> Result<Ref<'_,Rc<RefCell<Option<Box<dyn Write>>>>>, SchemeError> 
+        -> Result<Rc<RefCell<Option<Box<dyn Write>>>>, SchemeError> 
     {
         let id = self.to_object(value)?;
         let heap = self.heap.borrow();
-        Ref::filter_map(heap, |h| {
-            if let HeapObject::OutputPort(output) = h.get(id) {
-                Some(output)
-            } else {
-                None
-            }
-        }).map_err(|_| {
-            SchemeError::TypeError(format!(
-                "Expected an InputPort, but got a {}", value.type_name()
-            ))
-        })        
+        match heap.get(id) {
+            HeapObject::OutputPort(output) => Ok(output.clone()),
+            _ => Err(SchemeError::TypeError(format!(
+                    "Expected an OutputPort, but got a {}", value.type_name()
+                ))),
+        }        
     }
 
     pub fn is_object(&self, value: Value) -> Option<GcId> {
@@ -1457,8 +1557,11 @@ fn primitive_close_input_port(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[V
 fn primitive_read_char(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
     -> Result<EvalResult, SchemeError> 
 {
-    check_arity!(args, 1);
-    let input = interp.to_input_port(args[0])?;
+    let mut input = interp.get_input_port()?;
+    check_arity_range!(args, 0, 1);
+    if args.len() == 1 {
+        input = interp.to_input_port(args[0])?;
+    } 
     let mut borrow = input.borrow_mut();
     if let Some(ref mut reader) = *borrow {
         let mut buf = [0u8; 1];
@@ -1515,13 +1618,14 @@ fn primitive_close_output_port(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[
 fn primitive_flush_output_port(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
     -> Result<EvalResult, SchemeError> 
 {
-    check_arity!(args, 1);
-    let output = interp.to_output_port(args[0])?;
+    check_arity_range!(args, 0, 1);
+    let mut output = interp.get_output_port()?;
+    if args.len() > 0 {
+        output = interp.to_output_port(args[0])?;
+    }
     let mut guard = output.borrow_mut();
     if let Some(writer) = guard.as_deref_mut() {
-        writer.flush().map_err(|e| {
-            SchemeError::IOError(format!("Failed to flush output port: {}", e))
-        })?;
+        writer.flush()?;
         EvalResult::done(Value::Nil)
     } else {
         Err(SchemeError::IOError(format!(
@@ -1530,21 +1634,77 @@ fn primitive_flush_output_port(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[
     }
 }
 
-fn primitive_write_char(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+fn primitive_with_input_port(interp: &Interp, env: Rc<RefCell<Env>>, args: &[Value]) 
     -> Result<EvalResult, SchemeError> 
 {
     check_arity!(args, 2);
-    let output = interp.to_output_port(args[0])?;
-    let ch = interp.to_char(args[1])?;
+    interp.with_input_port(args[0], || {
+        EvalResult::done(interp.apply(env, args[1], vec![])?)
+    })
+}
+
+fn primitive_with_output_port(interp: &Interp, env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 2);
+    interp.with_output_port(args[0], || {
+        EvalResult::done(interp.apply(env, args[1], vec![])?)
+    })
+}
+
+fn primitive_current_input_port(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 0);
+    EvalResult::done(interp.get_input_port_as_value()?)
+}
+
+fn primitive_current_output_port(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 0);
+    EvalResult::done(interp.get_output_port_as_value()?)
+}
+
+fn primitive_write_char(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
+    let mut output = interp.get_output_port()?;
+    check_arity_range!(args, 1, 2);
+    let ch;
+    if args.len() == 1 {
+        ch = interp.to_char(args[0])?;
+    } else /* args.len() == 2 */ {
+        output = interp.to_output_port(args[0])?;
+        ch = interp.to_char(args[1])?;
+    }
+    
     let mut guard = output.borrow_mut();
     if let Some(writer) = guard.as_deref_mut() {
-        write!(writer, "{}", ch).map_err(|e| {
-            SchemeError::IOError(format!("write to output port failed: {}", e))
-        })?;
+        write!(writer, "{}", ch)?;
         EvalResult::done(Value::Nil)
     } else {
         Err(SchemeError::IOError(format!(
             "Attempt to write to a closed output port."
+        )))
+    }
+}
+
+fn primitive_read(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
+    -> Result<EvalResult, SchemeError> 
+{
+    let mut input = interp.get_input_port()?;
+    if args.len() == 1 {
+        input = interp.to_input_port(args[0])?;
+    }
+    let mut borrow = input.borrow_mut();
+    if let Some(ref mut reader) = *borrow {
+        let mut parser = Parser::new(reader);
+        let expr = parser.read(interp)?;
+        EvalResult::done(expr)
+    } else {
+        Err(SchemeError::IOError(format!(
+            "Attempt to read from closed input port."
         )))
     }
 }
@@ -1555,12 +1715,13 @@ fn primitive_gc(interp: &Interp, env: Rc<RefCell<Env>>, _args: &[Value])
     // Marks all reachable objects from the environment and the heap's symbols.
     let len = interp.heap.borrow().len();
     let mut marks = MarkSet::new(len);
+
+    interp.mark(&mut marks);
     env.borrow().mark(interp, &mut marks);
-    interp.heap.borrow().mark(interp, &mut marks);
     
     // Collects all unreachable objects lying in the heap.
     let mut heap = interp.heap.borrow_mut();
-    let collected = heap.collect(&marks);
+    let collected = heap.sweep(&marks);
 
     println!("gc: marked {} /{} objects, collected {}.", marks.count(), len, collected);   
 
@@ -1570,13 +1731,16 @@ fn primitive_gc(interp: &Interp, env: Rc<RefCell<Env>>, _args: &[Value])
 fn primitive_debug(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) 
     -> Result<EvalResult, SchemeError> 
 {
-    for (i, arg) in args.iter().enumerate() {
-        if i > 0 {
-            print!(" ");
+    let port_ref = interp.get_output_port()?;
+    if let Some(ref mut port) = *port_ref.borrow_mut() {
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                write!(port, " ")?;
+            }
+            write!(port, "{}", interp.display(*arg))?;
         }
-        print!("{}", interp.display(*arg))
+        writeln!(port)?;
     }
-    println!();
     EvalResult::done(Value::Boolean(true))
 }
 

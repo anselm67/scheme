@@ -22,6 +22,18 @@ macro_rules! check_min_arity {
 }
 
 #[macro_export]
+macro_rules! check_arity_range {
+    ($args:expr, $low: expr, $high: expr) => {
+        let actual = $args.len() as isize;
+        if actual < $low || $args.len() > $high {
+            return Err(SchemeError::ArgCountError(format!(
+                "Expected {} to {} args, but got {}.", $low, $high, $args.len()
+            )))
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! extract_args {
     ($args:expr, $count:expr, $($name:ident : $variant:ident),*) => {
         if $args.len() != $count {

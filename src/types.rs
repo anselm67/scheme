@@ -38,10 +38,18 @@ impl SchemeError {
         }
     }
 }
+
 impl fmt::Display for SchemeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (label, message) = self.get_infos();
         write!(f, "[{}]: {}", label, message)
+    }
+}
+
+impl From<std::io::Error> for SchemeError {
+
+    fn from(err: std::io::Error) -> Self {
+        SchemeError::IOError(err.to_string())
     }
 }
 
