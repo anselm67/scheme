@@ -20,6 +20,14 @@ pub struct Closure {
     env: Rc<RefCell<Env>>,
 }
 
+impl Closure {
+
+    pub fn get_body(&self) -> Vec<Value> {
+        let mut body = self.body.to_vec();
+        body.push(self.tail);
+        body
+    }
+}
 #[derive(Clone)]
 pub struct Vector {
     pub data: RefCell<Vec<Value>>,

@@ -7,7 +7,7 @@ use std::process;
 use std::rc::Rc;
 
 use crate::env::Env;
-use crate::heap::{Apply, HeapObject, Keyword, Vector};
+use crate::heap::{Apply, Closure, HeapObject, Keyword, Vector};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
 use crate::{all_of_type, check_arity, check_min_arity, extract_args, heap};
@@ -33,7 +33,7 @@ impl Interp {
             parent: None,
         };
         let env_handle = Rc::new(RefCell::new(global_env));
-        let heap_handle = RefCell::new(heap::Heap::new(4096));
+        let heap_handle = RefCell::new(heap::Heap::new(8192));
         let (append, list, quasiquote, unquote, unquote_splicing) = {
             let mut heap = heap_handle.borrow_mut();
             (
@@ -79,6 +79,9 @@ impl Interp {
         self.define_primitive("equal?", primitive_equal);
         self.define_primitive("error", primitive_error);
         self.define_primitive("with-exception-handler", primitive_with_exception_handler);
+        self.define_primitive("procedure?", primitive_procedure_p);
+        self.define_primitive("closure?", primitive_closure_p);
+        self.define_primitive("closure->body", primitive_closure_body);
         self.define("#t", Value::Boolean(true));
         self.define("#f", Value::Boolean(false));
 
@@ -351,6 +354,30 @@ impl Interp {
         })
     }
 
+    pub fn is_closure(&self, value: Value) -> Option<Ref<'_, Closure>> {
+        if let Some(id) = self.is_object(value) {
+            Ref::filter_map(self.heap.borrow(), |h| {
+                match h.get(id) {
+                    HeapObject::Closure(closure) => Some(closure.as_ref()),
+                    HeapObject::NaryClosure(closure) => Some(closure.as_ref()),
+                    _ => None,
+                }
+            }).ok()
+        } else {
+            None
+        }
+    }
+
+    pub fn to_closure(&self, value: Value) -> Result<Ref<'_,Closure>, SchemeError> {
+        if let Some(closure) = self.is_closure(value) {
+            Ok(closure)
+        } else {
+            Err(SchemeError::TypeError(format!(
+                "Expected a Closre, but got a {}", value.type_name())))
+
+        }
+    }
+
     pub fn is_vector(&self, value: Value) -> Option<Ref<'_, Vector>> {
         if let Some(id) = self.is_object(value) {
             Ref::filter_map(self.heap.borrow(), |h| {
@@ -366,19 +393,13 @@ impl Interp {
     }
 
     pub fn to_vector(&self, value: Value) -> Result<Ref<'_,Vector>, SchemeError> {
-        let id = self.to_object(value)?;
-        let heap = self.heap.borrow();
-        Ref::filter_map(heap, |h| {
-            if let HeapObject::Vector(vector) = h.get(id) {
-                Some(vector)
-            } else {
-                None
-            }
-        }).map_err(|_| {
-            SchemeError::TypeError(format!(
+        if let Some(vector) = self.is_vector(value) {
+            Ok(vector)
+        } else {
+            Err(SchemeError::TypeError(format!(
                 "Expected a Vector, but got a {}", value.type_name()
-            ))
-        })
+            )))
+        }
     }
 
     pub fn to_input_port(&self, value: Value) 
@@ -474,6 +495,20 @@ impl Interp {
             _ => Err(SchemeError::TypeError(format!(
                 "Expected a Symbol, but got a {}.", value.type_name()
             )))
+        }
+    }
+
+    pub fn is_procedure(&self, value: Value) -> bool {
+        if let Some(id) = self.is_object(value) {
+            let heap = self.heap.borrow();
+            match heap.get(id) {
+                HeapObject::Closure(_) => true,
+                HeapObject::NaryClosure(_) => true,
+                HeapObject::Primitive(_) => true,
+                _ => false
+            }
+        } else {
+            false
         }
     }
 
@@ -694,7 +729,37 @@ fn primitive_with_exception_handler(interp: &Interp, env: Rc<RefCell<Env>>, args
     }
 }
 
-fn primitive_symbol_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  -> Result<EvalResult, SchemeError> {
+fn primitive_procedure_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 1);
+    EvalResult::done(Value::Boolean(interp.is_procedure(args[0])))
+}
+
+fn primitive_closure_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 1);
+    EvalResult::done(Value::Boolean(
+        interp.is_closure(args[0]).is_some()
+    ))
+}
+
+fn primitive_closure_body(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
+    check_arity!(args, 1);
+    let body = {
+        let closure = interp.to_closure(args[0])?;
+        closure.get_body()
+    };
+    let mut heap = interp.heap.borrow_mut();
+    EvalResult::done(heap.alloc_list(&body))
+}
+
+fn primitive_symbol_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value])  
+    -> Result<EvalResult, SchemeError> 
+{
     check_arity!(args, 1);
     EvalResult::done(Value::Boolean(interp.is_symbol(args[0]).is_some()))
 }

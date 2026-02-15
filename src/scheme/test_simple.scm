@@ -2,6 +2,14 @@
 
 (load "src/scheme/macros.scm")
 
+;; Testing some predicates.
+(assert-equal #t (procedure? +))
+(assert-equal #f (procedure? 1))
+(assert-equal #t (procedure? (lambda () ())))
+
+(assert-equal #t (closure? (lambda () ())))
+(assert-equal #f (closure? 1))
+
 ;; Testing lists
 (assert-equal '(3 2 1) (reverse '(1 2 3)))
 (assert-equal '() (reverse '()))
