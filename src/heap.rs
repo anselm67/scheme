@@ -33,6 +33,25 @@ pub struct Vector {
     pub data: RefCell<Vec<Value>>,
 }
 
+struct StringWriter {
+    pub data: Rc<RefCell<Vec<u8>>>,
+}
+
+impl std::io::Write for StringWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.data.borrow_mut().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct OutputPort {
+    pub port: Rc<RefCell<Option<Box<dyn Write>>>>, 
+    pub string_buffer: Option<Rc<RefCell<Vec<u8>>>>,        
+}
 #[derive(Clone)]
 pub enum HeapObject {
     FreeSlot(GcId),
@@ -44,7 +63,7 @@ pub enum HeapObject {
     Closure(Box<Closure>),
     NaryClosure(Box<Closure>),
     InputPort(Rc<RefCell<Option<Box<dyn BufRead>>>>),
-    OutputPort(Rc<RefCell<Option<Box<dyn Write>>>>),
+    OutputPort(OutputPort),
     // Other heap-allocated object types can be added here
 }
 
@@ -435,7 +454,22 @@ impl Heap {
         -> Value 
     {
         let id = self.next_id();
-        self.objects[id] = HeapObject::OutputPort(output);
+        self.objects[id] = HeapObject::OutputPort(
+            OutputPort { port: output, string_buffer: None }
+        );
+        Value::Object(id)
+    }
+
+    pub fn alloc_output_string_port(&mut self) 
+        -> Value 
+    {
+        let id = self.next_id();
+        let buffer = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let writer = StringWriter { data: buffer.clone() };
+        self.objects[id] = HeapObject::OutputPort(OutputPort { 
+            port: Rc::new(RefCell::new(Some(Box::new(writer) as Box<dyn Write>))), 
+            string_buffer: Some(buffer.clone()),
+        });
         Value::Object(id)
     }
 
