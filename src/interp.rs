@@ -98,8 +98,8 @@ impl Interp {
         -> Result<T, SchemeError>
         where F: FnOnce() -> Result<T, SchemeError>
     {
-        let output = self.to_output_port(value)?;
-        if output.port.borrow().is_none() {
+        let input = self.to_input_port(value)?;
+        if input.borrow().is_none() {
             Err(SchemeError::IOError(format!(
                 "Attempt to read from a closed output port."
             )))
@@ -1561,8 +1561,10 @@ fn primitive_open_input_string(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[
     -> Result<EvalResult, SchemeError> 
 {
     check_arity!(args, 1);
-    let text = interp.to_string(args[0])?;
-    let cursor = std::io::Cursor::new(text.as_bytes().to_vec());
+    let text = {
+        interp.to_string(args[0])?.as_bytes().to_vec()
+    };
+    let cursor = std::io::Cursor::new(text);
     let boxed_reader: Box<dyn BufRead> = Box::new(cursor);
     let input = Rc::new(RefCell::new(Some(boxed_reader)));
     EvalResult::done(interp.heap.borrow_mut().alloc_input_port(input))

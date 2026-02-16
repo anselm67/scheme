@@ -84,6 +84,13 @@
     (if (equal? object value) #t (error "test failed."))
 )
 
+(define-syntax assert-fails
+    (lambda (expr) 
+        `(assert-equal 'test-failed 
+            (catch (lambda (err) 'test-failed) ,expr)
+        ))
+)
+
 (define (reverse lst)
     (let loop ((remaining lst) (acc '()))
         (if (null? remaining)
