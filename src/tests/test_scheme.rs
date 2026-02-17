@@ -1,4 +1,3 @@
-
 use std::fs;
 use std::path::PathBuf;
 
@@ -11,7 +10,7 @@ fn get_test_files() -> Vec<PathBuf> {
         .filter_map(|entry| {
             let path = entry.ok()?.path();
             let file_name = path.file_name()?.to_str()?;
-            
+
             // Check if it starts with "test_" and ends with ".scm"
             if file_name.starts_with("test_") && file_name.ends_with(".scm") {
                 Some(path)

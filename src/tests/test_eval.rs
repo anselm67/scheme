@@ -13,7 +13,10 @@ fn test_eval_self_types() {
     let nil_val = Value::Nil;
 
     assert_eq!(interp.eval(interp.env.clone(), int_val).unwrap(), int_val);
-    assert_eq!(interp.eval(interp.env.clone(), float_val).unwrap(), float_val);
+    assert_eq!(
+        interp.eval(interp.env.clone(), float_val).unwrap(),
+        float_val
+    );
     assert_eq!(interp.eval(interp.env.clone(), bool_val).unwrap(), bool_val);
     assert_eq!(interp.eval(interp.env.clone(), nil_val).unwrap(), nil_val);
 }

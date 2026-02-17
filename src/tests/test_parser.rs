@@ -1,6 +1,5 @@
 use crate::{interp::Interp, parser::Parser};
 
-
 #[test]
 fn test_parse_some_exprs() {
     let interp = Interp::new();
@@ -9,7 +8,7 @@ fn test_parse_some_exprs() {
         "(* 2 3)",
         "(1 2 3)",
         "((lambda (x) (+ x 1)) 2)",
-        "'(1 2 . 3)"
+        "'(1 2 . 3)",
     ];
     for text in inputs {
         let mut parser = Parser::new(text.as_bytes());
@@ -22,10 +21,7 @@ fn test_parse_some_exprs() {
 fn test_parse_fails() {
     let interp = Interp::new();
 
-    let inputs = vec![
-        "(* 2 3",
-        "(define! x \\#a)"
-    ];
+    let inputs = vec!["(* 2 3", "(define! x \\#a)"];
     for text in inputs {
         let mut parser = Parser::new(text.as_bytes());
         let expr = parser.read(&interp);

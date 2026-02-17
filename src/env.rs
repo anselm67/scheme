@@ -1,7 +1,10 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{interp::Interp, markset::MarkSet, types::{GcId, SchemeError, SchemeObject, Value}};
-
+use crate::{
+    interp::Interp,
+    markset::MarkSet,
+    types::{GcId, SchemeError, SchemeObject, Value},
+};
 
 pub struct Env {
     pub macros: HashMap<GcId, Value>,
@@ -10,7 +13,6 @@ pub struct Env {
 }
 
 impl Env {
-    
     pub fn new() -> Self {
         Self {
             macros: HashMap::new(),
@@ -51,7 +53,12 @@ impl Env {
             };
             match next_opt {
                 Some(p) => current_rc = p,
-                None => return Err(SchemeError::UnboundVariable(format!("Unbound variable with GcId {}", key))),                
+                None => {
+                    return Err(SchemeError::UnboundVariable(format!(
+                        "Unbound variable with GcId {}",
+                        key
+                    )));
+                }
             };
         }
     }
@@ -85,7 +92,7 @@ impl Env {
                 Some(parent_env) => {
                     let outer = parent_env.borrow();
                     outer.mark(interp, marks);
-                },
+                }
                 None => return,
             }
         }

@@ -21,7 +21,6 @@ pub enum SchemeError {
 }
 
 impl SchemeError {
-
     pub fn get_infos<'a>(&'a self) -> (&'static str, &'a str) {
         match self {
             SchemeError::EvalError(m) => ("Evaluation error", m),
@@ -47,7 +46,6 @@ impl fmt::Display for SchemeError {
 }
 
 impl From<std::io::Error> for SchemeError {
-
     fn from(err: std::io::Error) -> Self {
         SchemeError::IOError(err.to_string())
     }
@@ -58,7 +56,7 @@ impl std::error::Error for SchemeError {}
 
 pub enum EvalResult {
     Done(Value),
-    Continuation(Rc<RefCell<Env>>, Value)
+    Continuation(Rc<RefCell<Env>>, Value),
 }
 
 impl EvalResult {
@@ -117,7 +115,7 @@ impl std::ops::Add for Number {
             (Number::Int(a), Number::Float(b)) => Number::Float(a as f64 + b),
             (Number::Float(a), Number::Int(b)) => Number::Float(a + b as f64),
             (Number::Float(a), Number::Float(b)) => Number::Float(a + b),
-        }        
+        }
     }
 }
 
@@ -187,7 +185,6 @@ impl std::ops::Rem for Number {
 }
 
 impl PartialOrd for Number {
-
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (Number::Int(a), Number::Int(b)) => a.partial_cmp(b),
@@ -206,7 +203,7 @@ impl TryFrom<Number> for i32 {
         match value {
             Number::Int(i) => {
                 i32::try_from(i).map_err(|_| format!("Integer overflow {} to i32", value))
-            },
+            }
             Number::Float(f) => {
                 // Truncate the float and check range
                 if f > i32::MAX as f64 || f < i32::MIN as f64 {
@@ -231,7 +228,6 @@ pub enum Value {
 }
 
 impl Value {
-
     pub fn type_name(&self) -> &'static str {
         match self {
             Self::Number(_) => "Number",
@@ -240,7 +236,7 @@ impl Value {
             Self::Object(_) => "Object",
             Self::Nil => "Nil",
             Self::Unbound => "*unbound*",
-            Self::Eof => "*EoF*"
+            Self::Eof => "*EoF*",
         }
     }
 
@@ -248,7 +244,7 @@ impl Value {
         match (self, other) {
             (Value::Number(a), Value::Number(b)) => a == b,
             (Value::Char(a), Value::Char(b)) => a == b,
-            (Value::Boolean(a), Value::Boolean(b)) => a == b, 
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
             (Value::Object(a), Value::Object(b)) => {
                 a == b || {
                     let heap = interp.heap.borrow();
@@ -256,7 +252,7 @@ impl Value {
                     let objb = heap.get(*b);
                     obja.is_equal(interp, objb)
                 }
-            },
+            }
             (Value::Nil, Value::Nil) => true,
             (Value::Unbound, Value::Unbound) => false,
             _ => false,
@@ -276,14 +272,9 @@ impl<'a> std::fmt::Display for DisplayWrapper<'a> {
 }
 
 impl SchemeObject for Value {
-
-    fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) 
-        -> Result<EvalResult, SchemeError> 
-    {
+    fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError> {
         match self {
-            Value::Object(id) => {
-                id.eval(interp, env)
-            },
+            Value::Object(id) => id.eval(interp, env),
             _ => Ok(EvalResult::Done(*self)),
         }
     }
@@ -307,7 +298,7 @@ impl SchemeObject for Value {
                     ' ' => write!(f, "#\\space"),
                     '\n' => write!(f, "#\\newline"),
                     '\r' => write!(f, "#\\return"),
-                    any => write!(f, "{}", any)
+                    any => write!(f, "{}", any),
                 }
             }
             Value::Boolean(true) => write!(f, "#t"),
@@ -325,4 +316,3 @@ impl SchemeObject for Value {
         }
     }
 }
-

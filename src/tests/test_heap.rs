@@ -5,7 +5,6 @@ use crate::types::{Number, Value};
 
 #[test]
 fn test_intern_symbol() {
-
     let mut heap = Heap::new(128);
 
     let sym1 = heap.intern_symbol("test");
@@ -13,7 +12,6 @@ fn test_intern_symbol() {
 
     assert_eq!(sym1, sym2, "Interned symbols should be the same");
 }
-
 
 #[test]
 fn test_eval_symbol() {
@@ -24,14 +22,18 @@ fn test_eval_symbol() {
     drop(heap);
 
     let result = interp.eval(interp.env.clone(), symbol);
-    assert!(matches!(result, Err(UnboundVariable(_))), 
-        "Evaluated result should be an UnboundVariable error");
+    assert!(
+        matches!(result, Err(UnboundVariable(_))),
+        "Evaluated result should be an UnboundVariable error"
+    );
 
     // Bind the symbol, check value.
     let value = Value::Number(Number::Int(32));
     interp.define("test-symbol", value);
-    assert!(matches!(interp.eval(interp.env.clone(), symbol), Ok(x) if x == value), 
-        "Evaluated symbol should return bound value");
+    assert!(
+        matches!(interp.eval(interp.env.clone(), symbol), Ok(x) if x == value),
+        "Evaluated symbol should return bound value"
+    );
 }
 
 #[test]
@@ -44,8 +46,10 @@ fn test_eval_string() {
         panic!("Expected Value::Object");
     };
     let result = interp.eval(interp.env.clone(), string);
-    assert!(matches!(result, Ok(Value::Object(id)) if id == string_id), 
-        "Evaluated string should return the same object ID");
+    assert!(
+        matches!(result, Ok(Value::Object(id)) if id == string_id),
+        "Evaluated string should return the same object ID"
+    );
 }
 
 #[test]
@@ -56,9 +60,19 @@ fn test_true_and_false_symbols() {
     let true_sym = heap.intern_symbol("#t");
     let false_sym = heap.intern_symbol("#f");
     drop(heap);
-    
-    assert!(matches!(interp.eval(interp.env.clone(), true_sym), Ok(Value::Boolean(true))),
-        "#t should evaluate to Boolean(true)");
-    assert!(matches!(interp.eval(interp.env.clone(), false_sym), Ok(Value::Boolean(false))), 
-        "#f should evaluate to Boolean(false)");  
+
+    assert!(
+        matches!(
+            interp.eval(interp.env.clone(), true_sym),
+            Ok(Value::Boolean(true))
+        ),
+        "#t should evaluate to Boolean(true)"
+    );
+    assert!(
+        matches!(
+            interp.eval(interp.env.clone(), false_sym),
+            Ok(Value::Boolean(false))
+        ),
+        "#f should evaluate to Boolean(false)"
+    );
 }

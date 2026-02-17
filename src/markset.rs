@@ -1,16 +1,14 @@
-
 pub struct MarkSet {
     bits: Vec<u64>,
-    capacity: usize
+    capacity: usize,
 }
 
 impl MarkSet {
-
-    pub fn new (capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         let size = (capacity + 63) / 64;
-        Self { 
+        Self {
             capacity: capacity,
-            bits: vec![0; size], 
+            bits: vec![0; size],
         }
     }
 
@@ -34,7 +32,10 @@ impl MarkSet {
     }
 
     pub fn count(&self) -> usize {
-        self.bits.iter().map(|block| block.count_ones() as usize).sum()
+        self.bits
+            .iter()
+            .map(|block| block.count_ones() as usize)
+            .sum()
     }
 }
 
@@ -48,20 +49,28 @@ mod tests {
         let boundaries = [0, 63, 64, 127];
 
         for &idx in &boundaries {
-            assert!(!marks.is_marked(idx), "Index {} should be unmarked initially", idx);
+            assert!(
+                !marks.is_marked(idx),
+                "Index {} should be unmarked initially",
+                idx
+            );
             marks.mark(idx);
-            assert!(marks.is_marked(idx), "Index {} should be marked after calling mark()", idx);
-        }        
+            assert!(
+                marks.is_marked(idx),
+                "Index {} should be marked after calling mark()",
+                idx
+            );
+        }
     }
 
     #[test]
     fn test_mark() {
         let mut marks = MarkSet::new(128);
         for i in 0..128 {
-            assert!( ! marks.is_marked(i) );
+            assert!(!marks.is_marked(i));
         }
-        assert!( ! marks.is_marked(1), "All marks are off at init.");
+        assert!(!marks.is_marked(1), "All marks are off at init.");
         assert!(marks.mark(1), "First mark returns true.");
-        assert!( ! marks.mark(1), "Second mark returns false.");
+        assert!(!marks.mark(1), "Second mark returns false.");
     }
 }

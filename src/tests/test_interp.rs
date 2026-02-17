@@ -1,5 +1,8 @@
-use crate::{interp::Interp, parser::Parser, types::{Number, SchemeError, Value}};
-
+use crate::{
+    interp::Interp,
+    parser::Parser,
+    types::{Number, SchemeError, Value},
+};
 
 fn eval_expr(interp: &Interp, expr: Value) {
     interp.display(expr);
@@ -15,13 +18,11 @@ fn check_exprs(interp: &Interp, inputs: &Vec<(&str, Value)>) {
         let mut parser = Parser::new(text.as_bytes());
         let expr = parser.read(&interp);
         match expr {
-            Ok(expr) => {
-                match interp.eval(interp.env.clone(), expr) {
-                    Ok(value) => assert_eq!(value, *expected),
-                    Err(e) => panic!("Eval {} failed with error: {:?}", text, e)
-                }
+            Ok(expr) => match interp.eval(interp.env.clone(), expr) {
+                Ok(value) => assert_eq!(value, *expected),
+                Err(e) => panic!("Eval {} failed with error: {:?}", text, e),
             },
-            Err(e) => panic!("Parse {} failed, error: {:?}.", text, e)
+            Err(e) => panic!("Parse {} failed, error: {:?}.", text, e),
         }
     }
 }
@@ -32,8 +33,8 @@ fn check_errors(interp: &Interp, inputs: &Vec<(&str, SchemeError)>) {
         if let Ok(expr) = parser.read(&interp) {
             match interp.eval(interp.env.clone(), expr) {
                 Ok(_) => panic!("Failure was expected, but success happened!"),
-                Err(e) => assert_eq!(e, *expected)
-            }            
+                Err(e) => assert_eq!(e, *expected),
+            }
         } else {
             panic!("check_errors: couldn't parse {}", text);
         }
@@ -66,17 +67,17 @@ fn test_cond() {
 
     eval_expr(&interp, cond_expr_true);
     eval_expr(&interp, cond_expr_false);
-}  
+}
 
 #[test]
 fn test_nested_expr() {
     let interp = Interp::new();
-    
+
     let add = interp.lookup("+");
     let mul = interp.lookup("*");
     let mut heap = interp.heap.borrow_mut();
 
-    let expr= heap.alloc_list(&[
+    let expr = heap.alloc_list(&[
         mul,
         Value::Number(Number::Int(2)),
         Value::Number(Number::Int(3)),
@@ -93,23 +94,18 @@ fn test_nested_expr() {
     eval_expr(&interp, list);
 }
 
-
 #[test]
 fn test_setbang_special_form() {
     let interp = Interp::new();
-    
+
     let define = interp.lookup("define");
     let x = interp.lookup("x");
 
     let mut heap = interp.heap.borrow_mut();
 
-    let expr= heap.alloc_list(&[
-        define,
-        x,
-        Value::Number(Number::Int(1))
-    ]);
+    let expr = heap.alloc_list(&[define, x, Value::Number(Number::Int(1))]);
     drop(heap);
-    
+
     eval_expr(&interp, expr);
     eval_expr(&interp, x);
 }
@@ -118,42 +114,46 @@ fn test_setbang_special_form() {
 fn test_read_eval_number() {
     let inputs = vec![
         ("(* 3 2)", Value::Number(Number::Int(6))),
-        ("(- 1)",  Value::Number(Number::Int(-1))),
-        ("(- 2 1)",  Value::Number(Number::Int(1))),
-        ("(/ 2)",  Value::Number(Number::Float(0.5))),
-        ("(/ 4 2)",  Value::Number(Number::Float(2.0))),
-        ("(% 10 3)",  Value::Number(Number::Int(1))),
-        ("(= 10. 10.0)",  Value::Boolean(true)),
-        ("(> 10 3)",  Value::Boolean(true)),
-        ("(>= 10 10)",  Value::Boolean(true)),
-        ("(< 10 3)",  Value::Boolean(false)),
-        ("(<= 3 3)",  Value::Boolean(true)),
-        ("(number? 1)",  Value::Boolean(true)),
-        ("(number? \"x\")",  Value::Boolean(false)),
-        ("(integer? 1)",  Value::Boolean(true)),
-        ("(integer? 1.0)",  Value::Boolean(false)),
-        ("(float? 1.0)",  Value::Boolean(true)),
-        ("(float? 1)",  Value::Boolean(false)),
-        ("(max 4 2.0 1)",  Value::Number(Number::Int(4))),
-        ("(min 4 2.0 7)",  Value::Number(Number::Float(2.0))),
+        ("(- 1)", Value::Number(Number::Int(-1))),
+        ("(- 2 1)", Value::Number(Number::Int(1))),
+        ("(/ 2)", Value::Number(Number::Float(0.5))),
+        ("(/ 4 2)", Value::Number(Number::Float(2.0))),
+        ("(% 10 3)", Value::Number(Number::Int(1))),
+        ("(= 10. 10.0)", Value::Boolean(true)),
+        ("(> 10 3)", Value::Boolean(true)),
+        ("(>= 10 10)", Value::Boolean(true)),
+        ("(< 10 3)", Value::Boolean(false)),
+        ("(<= 3 3)", Value::Boolean(true)),
+        ("(number? 1)", Value::Boolean(true)),
+        ("(number? \"x\")", Value::Boolean(false)),
+        ("(integer? 1)", Value::Boolean(true)),
+        ("(integer? 1.0)", Value::Boolean(false)),
+        ("(float? 1.0)", Value::Boolean(true)),
+        ("(float? 1)", Value::Boolean(false)),
+        ("(max 4 2.0 1)", Value::Number(Number::Int(4))),
+        ("(min 4 2.0 7)", Value::Number(Number::Float(2.0))),
     ];
     let interp = Interp::new();
     check_exprs(&interp, &inputs);
 }
-
 
 #[test]
 fn test_read_eval_closure() {
     let inputs = vec![
-        ("((lambda (x . y) (length y)) 1 2 3)", Value::Number(Number::Int(2))),
+        (
+            "((lambda (x . y) (length y)) 1 2 3)",
+            Value::Number(Number::Int(2)),
+        ),
         ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
         ("((lambda (x) (+ x 1)) 2)", Value::Number(Number::Int(3))),
-        ("((lambda (x y) (+ x y)) 1 2)", Value::Number(Number::Int(3))),
+        (
+            "((lambda (x y) (+ x y)) 1 2)",
+            Value::Number(Number::Int(3)),
+        ),
     ];
     let interp = Interp::new();
     check_exprs(&interp, &inputs);
 }
-
 
 #[test]
 fn test_read_eval_list() {
@@ -173,7 +173,6 @@ fn test_read_eval_list() {
     let interp = Interp::new();
     check_exprs(&interp, &inputs);
 }
-
 
 #[test]
 fn test_read_eval_char() {
@@ -201,9 +200,10 @@ fn test_read_eval_char() {
 
 #[test]
 fn test_read_eval_functional() {
-    let inputs = vec![
-        ("(eval (append (list (list (quote lambda) (quote (x y)) (quote (+ x y))) 1 2)))", Value::Number(Number::Int(3))),
-    ];
+    let inputs = vec![(
+        "(eval (append (list (list (quote lambda) (quote (x y)) (quote (+ x y))) 1 2)))",
+        Value::Number(Number::Int(3)),
+    )];
     let interp = Interp::new();
     check_exprs(&interp, &inputs);
 }
@@ -223,12 +223,9 @@ fn test_equality() {
     check_exprs(&interp, &inputs);
 }
 
-
 #[test]
 fn test_user_error() {
-    let inputs = vec![
-        ("(error \"a\")", SchemeError::UserError("a".to_string())),
-    ];
+    let inputs = vec![("(error \"a\")", SchemeError::UserError("a".to_string()))];
     let interp = Interp::new();
     check_errors(&interp, &inputs);
 }
