@@ -2,15 +2,14 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
-use std::process;
 use std::rc::Rc;
 
 use crate::env::Env;
+use crate::heap;
 use crate::heap::{Apply, Closure, HeapObject, Keyword, OutputPort, Vector};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
 use crate::types::{DisplayWrapper, EvalResult, GcId, Number, SchemeError, SchemeObject, Value};
-use crate::{check_arity, check_min_arity, extract_args, heap};
 
 pub struct Interp {
     pub heap: RefCell<heap::Heap>,
@@ -70,7 +69,6 @@ impl Interp {
             unquote: unquote,
             unquote_splicing: unquote_splicing,
         };
-        interp.init_io();
         interp.init();
         interp
     }
@@ -156,7 +154,7 @@ impl Interp {
         }
     }
 
-    fn mark(&self, marks: &mut MarkSet) {
+    pub fn mark(&self, marks: &mut MarkSet) {
         self.heap.borrow().mark(self, marks);
         for port in self.input_stack.borrow().iter() {
             port.mark(self, marks);
@@ -180,32 +178,7 @@ impl Interp {
     }
 
     fn init(&self) {
-        self.define_primitive("eval", primitive_eval);
-        self.define_primitive("apply", primitive_apply);
-        self.define_primitive("expand", primitive_expand);
-        self.define_primitive("eq?", primitive_eq);
-        self.define_primitive("equal?", primitive_equal);
-        self.define_primitive("error", primitive_error);
-        self.define_primitive("with-exception-handler", primitive_with_exception_handler);
-        self.define_primitive("procedure?", primitive_procedure_p);
-        self.define_primitive("closure?", primitive_closure_p);
-        self.define_primitive("closure->body", primitive_closure_body);
-        self.define("#t", Value::Boolean(true));
-        self.define("#f", Value::Boolean(false));
-
-        // Initialize symbol functions.
-        self.define_primitive("symbol?", primitive_symbol_p);
-
-        // IO primitive functions.
-
-        // Initialize system primitive functions.
-        self.define_primitive("gc", primitive_gc);
-        self.define_primitive("heap-stats", primitive_heap_stats);
-        self.define_primitive("debug", primitive_debug);
-        self.define_primitive("load", primitive_load);
-        self.define_primitive("quit", primitive_quit);
-        self.define_primitive("exit", primitive_quit);
-
+        self.init_io();
         crate::primitives::register_all(self);
     }
 
@@ -664,223 +637,4 @@ impl Interp {
             }
         }
     }
-}
-
-fn primitive_eval(
-    interp: &Interp,
-    env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    EvalResult::done(interp.eval(env, args[0])?)
-}
-
-fn primitive_apply(
-    interp: &Interp,
-    env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    use crate::heap::Apply;
-    check_min_arity!(args, 2);
-    let func = args[0];
-    let (last, firsts) = args[1..]
-        .split_last()
-        .ok_or(SchemeError::ArgCountError(format!(
-            "Expected at least 2 args, got {}",
-            args.len()
-        )))?;
-    let all_args = interp.fold_list(*last, firsts.to_vec(), |mut acc, arg| {
-        acc.push(arg);
-        Ok(acc)
-    })?;
-    func.apply(interp, env, all_args)
-}
-
-fn primitive_expand(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    EvalResult::done(interp.expand(args[0])?)
-}
-
-fn primitive_equal(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 2);
-    EvalResult::done(Value::Boolean(args[0].is_equal(interp, &args[1])))
-}
-
-fn primitive_eq(
-    _interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 2);
-    EvalResult::done(Value::Boolean(args[0] == args[1]))
-}
-
-fn primitive_error(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    let string = interp.to_string(args[0])?.to_string();
-    Err(SchemeError::UserError(string))
-}
-
-fn primitive_with_exception_handler(
-    interp: &Interp,
-    env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 2);
-    let handler = args[0];
-    let thunk = args[1];
-    match interp.apply(env.clone(), thunk, vec![]) {
-        Ok(value) => EvalResult::done(value),
-        Err(e) => {
-            let (label, message) = e.get_infos();
-            let string = interp
-                .heap
-                .borrow_mut()
-                .alloc_string(format!("[{}]: {}", label, message));
-            EvalResult::done(interp.apply(env.clone(), handler, vec![string])?)
-        }
-    }
-}
-
-fn primitive_procedure_p(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_procedure(args[0])))
-}
-
-fn primitive_closure_p(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_closure(args[0]).is_some()))
-}
-
-fn primitive_closure_body(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    let body = {
-        let closure = interp.to_closure(args[0])?;
-        closure.get_body()
-    };
-    let mut heap = interp.heap.borrow_mut();
-    EvalResult::done(heap.alloc_list(&body))
-}
-
-fn primitive_symbol_p(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_symbol(args[0]).is_some()))
-}
-
-fn primitive_quit(
-    _interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    extract_args!(args, 1, exit_code: Number);
-    match i32::try_from(*exit_code) {
-        Ok(code) => process::exit(code),
-        Err(_) => Err(SchemeError::OverflowError(format!(
-            "Overflow while converting {} to i32",
-            exit_code
-        ))),
-    }
-}
-
-/**
- * IO primitives.
- */
-fn primitive_gc(
-    interp: &Interp,
-    env: Rc<RefCell<Env>>,
-    _args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    // Marks all reachable objects from the environment and the heap's symbols.
-    let len = interp.heap.borrow().len();
-    let mut marks = MarkSet::new(len);
-
-    interp.mark(&mut marks);
-    env.borrow().mark(interp, &mut marks);
-
-    // Collects all unreachable objects lying in the heap.
-    let mut heap = interp.heap.borrow_mut();
-    let collected = heap.sweep(&marks);
-
-    println!(
-        "gc: marked {} /{} objects, collected {}.",
-        marks.count(),
-        len,
-        collected
-    );
-
-    EvalResult::done(Value::Nil)
-}
-
-fn primitive_debug(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    let output = interp.get_output_port()?;
-    if let Some(ref mut port) = *output.port.borrow_mut() {
-        for (i, arg) in args.iter().enumerate() {
-            if i > 0 {
-                write!(port, " ")?;
-            }
-            write!(port, "{}", interp.display(*arg))?;
-        }
-        writeln!(port)?;
-        port.flush()?;
-    }
-    EvalResult::done(Value::Boolean(true))
-}
-
-fn primitive_load(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    let mut retval = Value::Nil;
-    for arg in args {
-        let filename = interp.to_string(*arg)?.to_string();
-        retval = interp.load(&filename)?;
-    }
-    EvalResult::done(retval)
-}
-
-fn primitive_heap_stats(
-    interp: &Interp,
-    _env: Rc<RefCell<Env>>,
-    _args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    let stats = interp.heap.borrow().stats();
-    println!("Total slots: {}", stats.total_slots);
-    println!(" Live slots: {}", stats.live_slots);
-    println!(" Free slots: {}", stats.free_slots);
-    println!("  Next slot: {}", stats.next_slot);
-    println!("    Symbols: {}", stats.symbol_count);
-    EvalResult::done(Value::Nil)
 }
