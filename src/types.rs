@@ -17,6 +17,7 @@ pub enum SchemeError {
     UserError(String),
     IndexOutOfBounds(String),
     IOError(String),
+    OutOfMemoryError(String),
     // Other error types can be added here
 }
 
@@ -34,6 +35,7 @@ impl SchemeError {
             SchemeError::UserError(m) => ("User error", m),
             SchemeError::IndexOutOfBounds(m) => ("Index out of bounds", m),
             SchemeError::IOError(m) => ("I/O error", m),
+            SchemeError::OutOfMemoryError(m) => ("Out of memory error", m),
         }
     }
 }

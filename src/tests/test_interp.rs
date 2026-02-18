@@ -48,22 +48,19 @@ fn test_cond() {
     let tru = interp.lookup("#t");
     let fls = interp.lookup("#f");
 
-    let mut heap = interp.heap.borrow_mut();
-
-    let cond_expr_true = heap.alloc_list(&[
+    let cond_expr_true = interp.alloc_list(&[
         cond.value(),
         tru.value(),
         Value::Number(Number::Int(42)),
         Value::Number(Number::Int(0)),
     ]);
 
-    let cond_expr_false = heap.alloc_list(&[
+    let cond_expr_false = interp.alloc_list(&[
         cond.value(),
         fls.value(),
         Value::Number(Number::Int(42)),
         Value::Number(Number::Int(0)),
     ]);
-    drop(heap);
 
     eval_expr(&interp, cond_expr_true.value());
     eval_expr(&interp, cond_expr_false.value());
@@ -75,21 +72,19 @@ fn test_nested_expr() {
 
     let add = interp.lookup("+");
     let mul = interp.lookup("*");
-    let mut heap = interp.heap.borrow_mut();
 
-    let expr = heap.alloc_list(&[
+    let expr = interp.alloc_list(&[
         mul.value(),
         Value::Number(Number::Int(2)),
         Value::Number(Number::Int(3)),
     ]);
 
-    let list = heap.alloc_list(&[
+    let list = interp.alloc_list(&[
         add.value(),
         expr.value(),
         Value::Number(Number::Int(1)),
         Value::Number(Number::Int(2)),
     ]);
-    drop(heap);
 
     eval_expr(&interp, list.value());
 }
@@ -101,10 +96,7 @@ fn test_setbang_special_form() {
     let define = interp.lookup("define").value();
     let x = interp.lookup("x");
 
-    let mut heap = interp.heap.borrow_mut();
-
-    let expr = heap.alloc_list(&[define, x.value(), Value::Number(Number::Int(1))]);
-    drop(heap);
+    let expr = interp.alloc_list(&[define, x.value(), Value::Number(Number::Int(1))]);
 
     eval_expr(&interp, expr.value());
     eval_expr(&interp, x.value());

@@ -220,8 +220,7 @@ impl<R: Read> Parser<R> {
         while let Some(ch) = self.peek() {
             self.next();
             if ch == b'"' {
-                let mut heap = interp.heap.borrow_mut();
-                return Ok(heap.alloc_string(token));
+                return Ok(interp.alloc_string(token));
             } else if ch == b'\\' {
                 match self.next() {
                     Some(ch) => token.push(ch as char),
@@ -245,17 +244,16 @@ impl<R: Read> Parser<R> {
             match c {
                 b')' => {
                     self.check_for(b')')?;
-                    return Ok(interp.heap.borrow_mut().alloc_list_from_handles(&items));
+                    return Ok(interp.alloc_list_from_handles(&items));
                 },
                 b'.' => {
                     self.next();
                     let cdr = self.read(interp)?;
                     self.skip_whitespace();
                     self.check_for(b')')?;
-                    let mut heap = interp.heap.borrow_mut();
-                    let car = heap.alloc_list_from_handles(&items);
-                    let tail = heap.last(car.value())?;
-                    heap.setcdr(interp.to_object(tail)?, cdr.value())?;
+                    let car = interp.alloc_list_from_handles(&items);
+                    let tail = interp.last(car.value())?;
+                    interp.setcdr(interp.to_object(tail)?, cdr.value())?;
                     return Ok(car);
                 },
                 _ => {
@@ -278,7 +276,7 @@ impl<R: Read> Parser<R> {
             self.skip_whitespace();
         }
         self.check_for(b')')?;
-        return Ok(interp.heap.borrow_mut().alloc_vector_from_handles(&list));
+        return Ok(interp.alloc_vector_from_handles(&list));
     }
 
     pub fn read(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {

@@ -14,7 +14,7 @@ fn primitive_list(
     if args.is_empty() {
         EvalResult::done(Value::Nil)
     } else {
-        EvalResult::done(interp.heap.borrow_mut().alloc_list(args).value())
+        EvalResult::done(interp.alloc_list(args).value())
     }
 }
 
@@ -37,15 +37,14 @@ fn primitive_append(
         } else {
             let mut p = *arg;
             while let Ok((car, cdr)) = interp.to_pair(p) {
-                let mut heap = interp.heap.borrow_mut();
                 if matches!(retval, Value::Nil) {
                     // TODO This can't  be right.
-                    retval = heap.alloc_pair(car, Value::Nil).value();
+                    retval = interp.alloc_pair(car, Value::Nil).value();
                     prev_cdr = retval;
                 } else {
                     // TODO This can't  be right.
-                    let next = heap.alloc_pair(car, Value::Nil).value();
-                    heap.setcdr(interp.to_object(prev_cdr)?, next)?;
+                    let next = interp.alloc_pair(car, Value::Nil).value();
+                    interp.setcdr(interp.to_object(prev_cdr)?, next)?;
                     prev_cdr = next;
                 }
                 p = cdr;
@@ -107,8 +106,7 @@ fn primitive_list_cons(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
-    let mut heap = interp.heap.borrow_mut();
-    EvalResult::done(heap.alloc_pair(args[0], args[1]).value())
+    EvalResult::done(interp.alloc_pair(args[0], args[1]).value())
 }
 
 fn primitive_list_car(

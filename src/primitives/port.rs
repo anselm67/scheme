@@ -24,7 +24,7 @@ fn primitive_open_input_file(
     let reader = BufReader::new(file);
     let boxed_reader: Box<dyn BufRead> = Box::new(reader);
     let input = Rc::new(RefCell::new(Some(boxed_reader)));
-    EvalResult::done(interp.heap.borrow_mut().alloc_input_port(input))
+    EvalResult::done(interp.alloc_input_port(input).value())
 }
 
 fn primitive_open_input_string(
@@ -37,7 +37,7 @@ fn primitive_open_input_string(
     let cursor = std::io::Cursor::new(text);
     let boxed_reader: Box<dyn BufRead> = Box::new(cursor);
     let input = Rc::new(RefCell::new(Some(boxed_reader)));
-    EvalResult::done(interp.heap.borrow_mut().alloc_input_port(input))
+    EvalResult::done(interp.alloc_input_port(input).value())
 }
 
 fn primitive_close_input_port(
@@ -103,7 +103,7 @@ fn primitive_open_output_file(
     })?;
     let writer: Box<dyn Write> = Box::new(BufWriter::new(file));
     let output = Rc::new(RefCell::new(Some(writer)));
-    EvalResult::done(interp.heap.borrow_mut().alloc_output_port(output))
+    EvalResult::done(interp.alloc_output_port(output).value())
 }
 
 fn primitive_open_output_string(
@@ -112,8 +112,8 @@ fn primitive_open_output_string(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 0);
-    let port = interp.heap.borrow_mut().alloc_output_string_port();
-    EvalResult::done(port)
+    let port = interp.alloc_output_string_port();
+    EvalResult::done(port.value())
 }
 
 fn primitive_get_output_string(
@@ -129,7 +129,7 @@ fn primitive_get_output_string(
     if let Some(buffer) = output.string_buffer {
         let bytes = buffer.borrow();
         let string = String::from_utf8_lossy(&bytes).into_owned();
-        EvalResult::done(interp.heap.borrow_mut().alloc_string(string).value())
+        EvalResult::done(interp.alloc_string(string).value())
     } else {
         Err(SchemeError::TypeError(format!(
             "This OutputPort isn't backed by a string."

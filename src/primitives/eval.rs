@@ -86,10 +86,7 @@ fn primitive_with_exception_handler(
         Ok(value) => EvalResult::done(value),
         Err(e) => {
             let (label, message) = e.get_infos();
-            let string = interp
-                .heap
-                .borrow_mut()
-                .alloc_string(format!("[{}]: {}", label, message));
+            let string = interp.alloc_string(format!("[{}]: {}", label, message));
             EvalResult::done(interp.apply(env.clone(), handler, vec![string.value()])?)
         }
     }
@@ -123,8 +120,7 @@ fn primitive_closure_body(
         let closure = interp.to_closure(args[0])?;
         closure.get_body()
     };
-    let mut heap = interp.heap.borrow_mut();
-    EvalResult::done(heap.alloc_list(&body).value())
+    EvalResult::done(interp.alloc_list(&body).value())
 }
 
 fn primitive_symbol_p(

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use crate::env::Env;
-use crate::heap::{self, Handle};
+use crate::heap::{self, Handle, Heap, PrimitiveFn};
 use crate::heap::{Apply, Closure, HeapObject, Keyword, OutputPort, Vector};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
@@ -49,11 +49,11 @@ impl Interp {
         let (append, list, quasiquote, unquote, unquote_splicing) = {
             let mut heap = heap_handle.borrow_mut();
             (
-                heap.intern_symbol("append"),
-                heap.intern_symbol("list"),
-                heap.intern_symbol("quasiquote"),
-                heap.intern_symbol("unquote"),
-                heap.intern_symbol("unquote-splicing"),
+                heap.raw_intern_symbol("append"),
+                heap.raw_intern_symbol("list"),
+                heap.raw_intern_symbol("quasiquote"),
+                heap.raw_intern_symbol("unquote"),
+                heap.raw_intern_symbol("unquote-splicing"),
             )
         };
         let interp = Self {
@@ -63,28 +63,115 @@ impl Interp {
             input_stack: RefCell::new(vec![]),
             output_stack: RefCell::new(vec![]),
 
-            list: list.value(),
-            append: append.value(),
-            quasiquote: quasiquote.value(),
-            unquote: unquote.value(),
-            unquote_splicing: unquote_splicing.value(),
+            list: list.expect("list symbol").value(),
+            append: append.expect("append symbol").value(),
+            quasiquote: quasiquote.expect("quasiquote symbol").value(),
+            unquote: unquote.expect("unquote symbol").value(),
+            unquote_splicing: unquote_splicing.expect("unquote-splicing symbol").value(),
         };
         interp.init();
         interp
     }
 
     fn init_io(&self) {
-        let mut heap = self.heap.borrow_mut();
-
         // Sets up stdin as the default input port.
         let boxed_reader: Box<dyn BufRead> = Box::new(BufReader::new(std::io::stdin()));
-        let input_port = heap.alloc_input_port(Rc::new(RefCell::new(Some(boxed_reader))));
-        self.input_stack.borrow_mut().push(input_port);
+        let input_port = self.alloc_input_port(Rc::new(RefCell::new(Some(boxed_reader))));
+        self.input_stack.borrow_mut().push(input_port.value());
 
         // Sets up stdout as the default output port.
         let boxed_writer: Box<dyn Write> = Box::new(BufWriter::new(std::io::stdout()));
-        let output_port = heap.alloc_output_port(Rc::new(RefCell::new(Some(boxed_writer))));
-        self.output_stack.borrow_mut().push(output_port)
+        let output_port = self.alloc_output_port(Rc::new(RefCell::new(Some(boxed_writer))));
+        self.output_stack.borrow_mut().push(output_port.value())
+    }
+
+    fn alloc_with_retry<F>(&self, mut alloc_fn: F) -> Handle
+    where
+        F: FnMut(&mut Heap) -> Result<Handle, SchemeError>,
+    {
+        if let Ok(result) = alloc_fn(&mut self.heap.borrow_mut()) {
+            return result;
+        }
+        println!("GC Trigered: Out of memory.");
+        // TODO Garbage collect
+        alloc_fn(&mut self.heap.borrow_mut()).expect("Out of memory after GC.")
+    }
+
+    pub fn intern_symbol(&self, name: &str) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_intern_symbol(name))
+    }
+
+    pub fn alloc_pair(&self, car: Value, cdr: Value) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_pair(car, cdr))
+    }
+
+    pub fn alloc_list(&self, items: &[Value]) -> Handle {
+        items
+            .into_iter()
+            .rfold(Handle::from_value(Value::Nil), |acc, val| {
+                self.alloc_pair(*val, acc.value())
+            })
+    }
+
+    pub fn alloc_list_from_handles(&self, items: &[Handle]) -> Handle {
+        items
+            .into_iter()
+            .rfold(Handle::from_value(Value::Nil), |acc, val| {
+                self.alloc_pair(val.value(), acc.value())
+            })
+    }
+
+    pub fn alloc_list_with_cdr(&self, items: &[Value], cdr: Value) -> Handle {
+        items
+            .into_iter()
+            .rfold(Handle::from_value(cdr), |acc, val| {
+                self.alloc_pair(*val, acc.value())
+            })
+    }
+
+    pub fn alloc_list_with_cdr_from_handles(&self, items: &[Handle], cdr: Value) -> Handle {
+        items
+            .into_iter()
+            .rfold(Handle::from_value(cdr), |acc, val| {
+                self.alloc_pair(val.value(), acc.value())
+            })
+    }
+
+    pub fn alloc_string(&self, s: impl Into<String>) -> Handle {
+        let owned = s.into();
+        self.alloc_with_retry(|heap| heap.raw_alloc_string(owned.clone()))
+    }
+
+    pub fn alloc_primitive(&self, func: PrimitiveFn) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_primitive(func))
+    }
+
+    pub fn alloc_closure(&self, closure: Closure) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_closure(closure.clone()))
+    }
+
+    pub fn alloc_nary_closure(&self, closure: Closure) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_nary_closure(closure.clone()))
+    }
+
+    pub fn alloc_vector(&self, items: &[Value]) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_vector(items))
+    }
+
+    pub fn alloc_vector_from_handles(&self, items: &[Handle]) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_vector_from_handles(items))
+    }
+
+    pub fn alloc_input_port(&self, input: Rc<RefCell<Option<Box<dyn BufRead>>>>) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_input_port(input.clone()))
+    }
+
+    pub fn alloc_output_port(&self, output: Rc<RefCell<Option<Box<dyn Write>>>>) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_output_port(output.clone()))
+    }
+
+    pub fn alloc_output_string_port(&self) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_output_string_port())
     }
 
     pub fn with_input_port<F, T>(&self, value: Value, thunk: F) -> Result<T, SchemeError>
@@ -164,16 +251,20 @@ impl Interp {
         }
     }
 
-    // TODO Take a Handle rather than a Value
     pub fn define(&self, name: &str, value: Value) -> Value {
-        let symbol = self.heap.borrow_mut().intern_symbol(name);
+        let symbol = self.intern_symbol(name);
         self.env.borrow_mut().define(symbol.id(), value);
         symbol.value()
     }
 
     pub fn define_primitive(&self, name: &str, func: heap::PrimitiveFn) {
-        let prim = self.heap.borrow_mut().alloc_primitive(func);
-        self.define(name, prim);
+        // TODO Retry on alloc failure
+        let prim = self
+            .heap
+            .borrow_mut()
+            .raw_alloc_primitive(func)
+            .expect("Should garbage collect!!");
+        self.define(name, prim.value());
     }
 
     fn init(&self) {
@@ -194,8 +285,16 @@ impl Interp {
         Ok(acc)
     }
 
+    pub fn last(&self, car: Value) -> Result<Value, SchemeError> {
+        self.heap.borrow().last(car)
+    }
+
+    pub fn setcdr(&self, id: GcId, value: Value) -> Result<Value, SchemeError> {
+        self.heap.borrow_mut().setcdr(id, value)
+    }
+
     pub fn lookup(&self, name: &str) -> Handle {
-        self.heap.borrow_mut().intern_symbol(name)
+        self.intern_symbol(name)
     }
 
     pub fn eval(&self, env: Rc<RefCell<Env>>, expr: Value) -> Result<Value, SchemeError> {
@@ -506,37 +605,32 @@ impl Interp {
 
     pub fn quote(&self, obj: Value) -> Result<Handle, SchemeError> {
         let value = &[Value::Object(Keyword::Quote as usize), obj];
-        Ok(self.heap.borrow_mut().alloc_list(value))
+        Ok(self.alloc_list(value))
     }
 
     pub fn quote_from_handle(&self, obj: Handle) -> Result<Handle, SchemeError> {
         let value = &[Value::Object(Keyword::Quote as usize), obj.value()];
-        Ok(self.heap.borrow_mut().alloc_list(value))
+        Ok(self.alloc_list(value))
     }
 
     pub fn quasiquote(&self, obj: Handle) -> Result<Handle, SchemeError> {
-        let mut heap = self.heap.borrow_mut();
-        Ok(heap.alloc_list(&[self.quasiquote, obj.value()]))
+        Ok(self.alloc_list(&[self.quasiquote, obj.value()]))
     }
 
     pub fn unquote(&self, obj: Handle) -> Result<Handle, SchemeError> {
-        let mut heap = self.heap.borrow_mut();
-        Ok(heap.alloc_list(&[self.unquote, obj.value()]))
+        Ok(self.alloc_list(&[self.unquote, obj.value()]))
     }
 
     pub fn unquote_splicing(&self, obj: Handle) -> Result<Handle, SchemeError> {
-        let mut heap = self.heap.borrow_mut();
-        Ok(heap.alloc_list(&[self.unquote_splicing, obj.value()]))
+        Ok(self.alloc_list(&[self.unquote_splicing, obj.value()]))
     }
 
     pub fn list(&self, obj: Value) -> Result<Handle, SchemeError> {
-        let mut heap = self.heap.borrow_mut();
-        Ok(heap.alloc_list(&[self.list, obj]))
+        Ok(self.alloc_list(&[self.list, obj]))
     }
 
     pub fn list_from_handle(&self, obj: Handle) -> Result<Handle, SchemeError> {
-        let mut heap = self.heap.borrow_mut();
-        Ok(heap.alloc_list(&[self.list, obj.value()]))
+        Ok(self.alloc_list(&[self.list, obj.value()]))
     }
 
     fn is_splicing(&self, value: Value) -> Result<Option<Value>, SchemeError> {
@@ -570,11 +664,9 @@ impl Interp {
                                 }
                                 p = cdr;
                             } else if p == Value::Nil {
-                                let mut heap = self.heap.borrow_mut();
-                                return Ok(heap.alloc_list_from_handles(&args));
+                                return Ok(self.alloc_list_from_handles(&args));
                             } else {
-                                let mut heap = self.heap.borrow_mut();
-                                return Ok(heap.alloc_list_with_cdr_from_handles(&args, p));
+                                return Ok(self.alloc_list_with_cdr_from_handles(&args, p));
                             }
                         }
                     }
@@ -623,11 +715,7 @@ impl Interp {
                     Ok(acc)
                 });
                 if updated {
-                    let expansion = {
-                        let mut heap = self.heap.borrow_mut();
-                        heap.alloc_list_from_handles(&items?)
-                    };
-                    Ok(expansion)
+                    Ok(self.alloc_list_from_handles(&items?))
                 } else {
                     Ok(Handle::Value(expr))
                 }

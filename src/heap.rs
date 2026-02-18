@@ -195,21 +195,28 @@ impl Keyword {
             Keyword::Lambda => match args {
                 [params_value, body @ .., tail] => {
                     let (params, is_nary) = extract_param_ids(interp, *params_value)?;
-                    let mut heap = interp.heap.borrow_mut();
                     if is_nary {
-                        Ok(EvalResult::Done(heap.alloc_nary_closure(Closure {
-                            params: params.into_boxed_slice(),
-                            body: body.to_vec().into_boxed_slice(),
-                            tail: *tail,
-                            env: env,
-                        })))
+                        Ok(EvalResult::Done(
+                            interp
+                                .alloc_nary_closure(Closure {
+                                    params: params.into_boxed_slice(),
+                                    body: body.to_vec().into_boxed_slice(),
+                                    tail: *tail,
+                                    env: env,
+                                })
+                                .value(),
+                        ))
                     } else {
-                        Ok(EvalResult::Done(heap.alloc_closure(Closure {
-                            params: params.into_boxed_slice(),
-                            body: body.to_vec().into_boxed_slice(),
-                            tail: *tail,
-                            env: env,
-                        })))
+                        Ok(EvalResult::Done(
+                            interp
+                                .alloc_closure(Closure {
+                                    params: params.into_boxed_slice(),
+                                    body: body.to_vec().into_boxed_slice(),
+                                    tail: *tail,
+                                    env: env,
+                                })
+                                .value(),
+                        ))
                     }
                 }
                 _ => Err(SchemeError::EvalError(format!(
@@ -337,7 +344,7 @@ impl Heap {
         heap
     }
 
-    fn next_id(&mut self) -> GcId {
+    fn next_id(&mut self) -> Result<GcId, SchemeError> {
         if self.free_slot < self.size {
             let available_id = self.free_slot;
             if let HeapObject::FreeSlot(free_slot) = self.objects[self.free_slot] {
@@ -349,10 +356,13 @@ impl Heap {
                     self.objects[self.free_slot].type_name()
                 )
             }
-            return available_id;
+            return Ok(available_id);
+        } else {
+            Err(SchemeError::OutOfMemoryError(format!(
+                "Out of memory, heap size {}",
+                self.objects.len()
+            )))
         }
-        // TODO Run the (gc) to get some space.
-        panic!("No more memory !");
     }
 
     fn handle(&self, id: GcId) -> Handle {
@@ -375,49 +385,49 @@ impl Heap {
     }
 
     fn intern_special_keywwords(&mut self) {
-        let if_id = self.intern_symbol("if");
+        let if_id = self.raw_intern_symbol("if");
         assert!(
-            if_id.id() == Keyword::If as usize,
+            if_id.expect("init symbol").id() == Keyword::If as usize,
             "Keyword 'if' should have GcId 0"
         );
-        let define_id = self.intern_symbol("define!");
+        let define_id = self.raw_intern_symbol("define!");
         assert!(
-            define_id.id() == Keyword::DefineBang as usize,
+            define_id.expect("init symbol").id() == Keyword::DefineBang as usize,
             "Keyword 'define!' should have GcId 1"
         );
-        let lambda_id = self.intern_symbol("lambda");
+        let lambda_id = self.raw_intern_symbol("lambda");
         assert!(
-            lambda_id.id() == Keyword::Lambda as usize,
+            lambda_id.expect("init symbol").id() == Keyword::Lambda as usize,
             "Keyword 'lambda' should have GcId 2"
         );
-        let quote_id = self.intern_symbol("quote");
+        let quote_id = self.raw_intern_symbol("quote");
         assert!(
-            quote_id.id() == Keyword::Quote as usize,
+            quote_id.expect("init symbol").id() == Keyword::Quote as usize,
             "Keyword 'quote' should have GcId 3"
         );
-        let true_id = self.intern_symbol("#t");
+        let true_id = self.raw_intern_symbol("#t");
         assert!(
-            true_id.id() == Keyword::True as usize,
+            true_id.expect("init symbol").id() == Keyword::True as usize,
             "Keyword '#t' should have GcId 4"
         );
-        let false_id = self.intern_symbol("#f");
+        let false_id = self.raw_intern_symbol("#f");
         assert!(
-            false_id.id() == Keyword::False as usize,
+            false_id.expect("init symbol").id() == Keyword::False as usize,
             "Keyword '#f' should have GcId 5"
         );
-        let set_bang_id = self.intern_symbol("set!");
+        let set_bang_id = self.raw_intern_symbol("set!");
         assert!(
-            set_bang_id.id() == Keyword::SetBang as usize,
+            set_bang_id.expect("init symbol").id() == Keyword::SetBang as usize,
             "Keyword 'set!' should have GcId 6"
         );
-        let quasiquote_id = self.intern_symbol("quasiquote");
+        let quasiquote_id = self.raw_intern_symbol("quasiquote");
         assert!(
-            quasiquote_id.id() == Keyword::QuasiQuote as usize,
+            quasiquote_id.expect("init symbol").id() == Keyword::QuasiQuote as usize,
             "Keyword 'quasiquote' should have GcId 7"
         );
-        let define_syntax_id = self.intern_symbol("define-syntax");
+        let define_syntax_id = self.raw_intern_symbol("define-syntax");
         assert!(
-            define_syntax_id.id() == Keyword::DefineSyntax as usize,
+            define_syntax_id.expect("init symbol").id() == Keyword::DefineSyntax as usize,
             "Keyword 'define-syntax' should have GcId 8"
         );
     }
@@ -434,21 +444,21 @@ impl Heap {
         &mut self.objects[id]
     }
 
-    pub fn intern_symbol(&mut self, name: &str) -> Handle {
+    pub fn raw_intern_symbol(&mut self, name: &str) -> Result<Handle, SchemeError> {
         if let Some(&id) = self.symbols.get(name) {
-            self.handle(id)
+            Ok(self.handle(id))
         } else {
-            let id: GcId = self.next_id();
+            let id: GcId = self.next_id()?;
             self.objects[id] = HeapObject::Symbol(name.to_string());
             self.symbols.insert(name.to_string(), id);
-            self.handle(id)
+            Ok(self.handle(id))
         }
     }
 
-    pub fn alloc_pair(&mut self, car: Value, cdr: Value) -> Handle {
-        let id: GcId = self.next_id();
+    pub fn raw_alloc_pair(&mut self, car: Value, cdr: Value) -> Result<Handle, SchemeError> {
+        let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Pair(car, cdr);
-        self.handle(id)
+        Ok(self.handle(id))
     }
 
     pub fn last(&self, car: Value) -> Result<Value, SchemeError> {
@@ -484,95 +494,72 @@ impl Heap {
         }
     }
 
-    pub fn alloc_list(&mut self, items: &[Value]) -> Handle {
-        items
-            .into_iter()
-            .rfold(Handle::from_value(Value::Nil), |acc, val| {
-                self.alloc_pair(*val, acc.value())
-            })
-    }
-
-    pub fn alloc_list_from_handles(&mut self, items: &[Handle]) -> Handle {
-        items
-            .into_iter()
-            .rfold(Handle::from_value(Value::Nil), |acc, val| {
-                self.alloc_pair(val.value(), acc.value())
-            })
-    }
-
-    pub fn alloc_list_with_cdr(&mut self, items: &[Value], cdr: Value) -> Handle {
-        items
-            .into_iter()
-            .rfold(Handle::from_value(cdr), |acc, val| {
-                self.alloc_pair(*val, acc.value())
-            })
-    }
-
-    pub fn alloc_list_with_cdr_from_handles(&mut self, items: &[Handle], cdr: Value) -> Handle {
-        items
-            .into_iter()
-            .rfold(Handle::from_value(cdr), |acc, val| {
-                self.alloc_pair(val.value(), acc.value())
-            })
-    }
-
-    pub fn alloc_string(&mut self, s: impl Into<String>) -> Handle {
-        let id: GcId = self.next_id();
+    pub fn raw_alloc_string(&mut self, s: impl Into<String>) -> Result<Handle, SchemeError> {
+        let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::String(s.into());
-        self.handle(id)
+        Ok(self.handle(id))
     }
 
-    pub fn alloc_primitive(&mut self, func: PrimitiveFn) -> Value {
-        let id: GcId = self.next_id();
+    pub fn raw_alloc_primitive(&mut self, func: PrimitiveFn) -> Result<Handle, SchemeError> {
+        let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Primitive(func);
-        Value::Object(id)
+        Ok(Handle::Value(Value::Object(id)))
     }
 
-    pub fn alloc_closure(&mut self, closure: Closure) -> Value {
-        let id: GcId = self.next_id();
+    pub fn raw_alloc_closure(&mut self, closure: Closure) -> Result<Handle, SchemeError> {
+        let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Closure(Box::new(closure));
-        Value::Object(id)
+        Ok(Handle::Value(Value::Object(id)))
     }
 
-    pub fn alloc_nary_closure(&mut self, closure: Closure) -> Value {
-        let id: GcId = self.next_id();
+    pub fn raw_alloc_nary_closure(&mut self, closure: Closure) -> Result<Handle, SchemeError> {
+        let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::NaryClosure(Box::new(closure));
-        Value::Object(id)
+        Ok(Handle::Value(Value::Object(id)))
     }
 
-    pub fn alloc_vector(&mut self, items: &[Value]) -> Handle {
-        let id: GcId = self.next_id();
+    pub fn raw_alloc_vector(&mut self, items: &[Value]) -> Result<Handle, SchemeError> {
+        let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Vector(Vector {
             data: RefCell::new(items.to_vec()),
         });
-        self.handle(id)
+        Ok(self.handle(id))
     }
 
-    pub fn alloc_vector_from_handles(&mut self, items: &[Handle]) -> Handle {
-        let id: GcId = self.next_id();
+    pub fn raw_alloc_vector_from_handles(
+        &mut self,
+        items: &[Handle],
+    ) -> Result<Handle, SchemeError> {
+        let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Vector(Vector {
             data: RefCell::new(items.iter().map(|h| h.value()).collect()),
         });
-        self.handle(id)
+        Ok(self.handle(id))
     }
 
-    pub fn alloc_input_port(&mut self, input: Rc<RefCell<Option<Box<dyn BufRead>>>>) -> Value {
-        let id = self.next_id();
+    pub fn raw_alloc_input_port(
+        &mut self,
+        input: Rc<RefCell<Option<Box<dyn BufRead>>>>,
+    ) -> Result<Handle, SchemeError> {
+        let id = self.next_id()?;
         self.objects[id] = HeapObject::InputPort(input);
-        Value::Object(id)
+        Ok(Handle::Value(Value::Object(id)))
     }
 
-    pub fn alloc_output_port(&mut self, output: Rc<RefCell<Option<Box<dyn Write>>>>) -> Value {
-        let id = self.next_id();
+    pub fn raw_alloc_output_port(
+        &mut self,
+        output: Rc<RefCell<Option<Box<dyn Write>>>>,
+    ) -> Result<Handle, SchemeError> {
+        let id = self.next_id()?;
         self.objects[id] = HeapObject::OutputPort(OutputPort {
             port: output,
             string_buffer: None,
         });
-        Value::Object(id)
+        Ok(Handle::Value(Value::Object(id)))
     }
 
-    pub fn alloc_output_string_port(&mut self) -> Value {
-        let id = self.next_id();
+    pub fn raw_alloc_output_string_port(&mut self) -> Result<Handle, SchemeError> {
+        let id = self.next_id()?;
         let buffer = Rc::new(RefCell::new(Vec::<u8>::new()));
         let writer = StringWriter {
             data: buffer.clone(),
@@ -581,7 +568,7 @@ impl Heap {
             port: Rc::new(RefCell::new(Some(Box::new(writer) as Box<dyn Write>))),
             string_buffer: Some(buffer.clone()),
         });
-        Value::Object(id)
+        Ok(Handle::Value(Value::Object(id)))
     }
 
     pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
@@ -670,7 +657,7 @@ impl Apply for Value {
                         .define(closure.params[index], args[index]);
                     index += 1;
                 }
-                let rest = interp.heap.borrow_mut().alloc_list(&args[index..]);
+                let rest = interp.alloc_list(&args[index..]);
                 new_env
                     .borrow_mut()
                     .define(closure.params[index], rest.value());
@@ -831,38 +818,6 @@ impl SchemeObject for GcId {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_alloc_pair() {
-        let mut heap = Heap::new(1024);
-        let pair = heap.alloc_list(&[Value::Boolean(true)]).value();
-        assert!(matches!(pair, Value::Object(_)));
-        if let Value::Object(id) = pair {
-            let obj = heap.get(id);
-            assert!(matches!(*obj, HeapObject::Pair(..)));
-            if let HeapObject::Pair(car, cdr) = obj {
-                assert_eq!(*car, Value::Boolean(true));
-                assert_eq!(*cdr, Value::Nil);
-            }
-        }
-    }
-
-    #[test]
-    fn test_alloc_pair_with_cdr() {
-        let mut heap = Heap::new(1024);
-        let pair = heap
-            .alloc_list_with_cdr(&[Value::Boolean(true)], Value::Boolean(false))
-            .value();
-        assert!(matches!(pair, Value::Object(_)));
-        if let Value::Object(id) = pair {
-            let obj = heap.get(id);
-            assert!(matches!(*obj, HeapObject::Pair(..)));
-            if let HeapObject::Pair(car, cdr) = obj {
-                assert_eq!(*car, Value::Boolean(true));
-                assert_eq!(*cdr, Value::Boolean(false));
-            }
-        }
-    }
 
     #[test]
     fn test_protection() {
