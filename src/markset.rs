@@ -1,5 +1,10 @@
+use std::collections::HashSet;
+
+use crate::env::Env;
+
 pub struct MarkSet {
     bits: Vec<u64>,
+    envs: HashSet<usize>,
     capacity: usize,
 }
 
@@ -8,6 +13,7 @@ impl MarkSet {
         let size = (capacity + 63) / 64;
         Self {
             capacity: capacity,
+            envs: HashSet::new(),
             bits: vec![0; size],
         }
     }
@@ -36,6 +42,11 @@ impl MarkSet {
             .iter()
             .map(|block| block.count_ones() as usize)
             .sum()
+    }
+
+    pub fn mark_env(&mut self, env: &Env) -> bool {
+        let env_addr = env as *const Env as usize;
+        return !self.envs.insert(env_addr);
     }
 }
 

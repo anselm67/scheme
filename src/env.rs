@@ -25,7 +25,7 @@ impl Env {
         Rc::new(RefCell::new(Env {
             macros: HashMap::new(),
             bindings: HashMap::new(),
-            parent: Some(parent),
+            parent: Some(parent.clone()),
         }))
     }
 
@@ -74,27 +74,30 @@ impl Env {
         }
     }
 
+    fn mark_this(&self, interp: &Interp, marks: &mut MarkSet) {
+        // Marks the macros and their definitions.
+        for (id, value) in self.macros.iter() {
+            id.mark(interp, marks);
+            value.mark(interp, marks);
+        }
+        // Marks the symbols and their values.
+        for (id, value) in self.bindings.iter() {
+            id.mark(interp, marks);
+            value.mark(interp, marks);
+        }
+    }
+
     pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
-        // TODO If this env was already marked, skip this.
-        loop {
-            // Marks the macros and their definitions.
-            for (id, value) in self.macros.iter() {
-                id.mark(interp, marks);
-                value.mark(interp, marks);
-            }
-            // Marks the symbols and their values.
-            for (id, value) in self.bindings.iter() {
-                id.mark(interp, marks);
-                value.mark(interp, marks);
-            }
-            // Marks the parent environment.
-            match &self.parent {
-                Some(parent_env) => {
-                    let outer = parent_env.borrow();
-                    outer.mark(interp, marks);
-                }
-                None => return,
-            }
+        if marks.mark_env(self) {
+            return;
+        }
+        self.mark_this(interp, marks);
+
+        let mut parent = self.parent.clone();
+        while let Some(parent_rc) = parent {
+            let inner = parent_rc.borrow();
+            inner.mark_this(interp, marks);
+            parent = inner.parent.clone();
         }
     }
 }

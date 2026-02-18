@@ -28,7 +28,7 @@ fn primitive_make_vector(
     }
     let mut heap = interp.heap.borrow_mut();
     let data = vec![fill_value; size as usize];
-    EvalResult::done(heap.alloc_vector(&data))
+    EvalResult::done(heap.alloc_vector(&data).value())
 }
 
 fn primitive_vector(
@@ -37,7 +37,7 @@ fn primitive_vector(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let mut heap = interp.heap.borrow_mut();
-    EvalResult::done(heap.alloc_vector(args))
+    EvalResult::done(heap.alloc_vector(args).value())
 }
 
 fn primitive_vector_length(
@@ -104,7 +104,7 @@ fn primitive_vector_to_list(
         let data = vector.data.borrow();
         data.clone()
     };
-    EvalResult::done(interp.heap.borrow_mut().alloc_list(&items))
+    EvalResult::done(interp.heap.borrow_mut().alloc_list(&items).value())
 }
 
 fn primitive_list_to_vector(
@@ -118,7 +118,7 @@ fn primitive_list_to_vector(
         Ok(acc)
     })?;
     let mut heap = interp.heap.borrow_mut();
-    EvalResult::done(heap.alloc_vector(&items))
+    EvalResult::done(heap.alloc_vector(&items).value())
 }
 
 fn primitive_vector_fill(

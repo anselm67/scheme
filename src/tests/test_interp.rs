@@ -18,7 +18,7 @@ fn check_exprs(interp: &Interp, inputs: &Vec<(&str, Value)>) {
         let mut parser = Parser::new(text.as_bytes());
         let expr = parser.read(&interp);
         match expr {
-            Ok(expr) => match interp.eval(interp.env.clone(), expr) {
+            Ok(expr) => match interp.eval(interp.env.clone(), expr.value()) {
                 Ok(value) => assert_eq!(value, *expected),
                 Err(e) => panic!("Eval {} failed with error: {:?}", text, e),
             },
@@ -31,7 +31,7 @@ fn check_errors(interp: &Interp, inputs: &Vec<(&str, SchemeError)>) {
     for (text, expected) in inputs {
         let mut parser = Parser::new(text.as_bytes());
         if let Ok(expr) = parser.read(&interp) {
-            match interp.eval(interp.env.clone(), expr) {
+            match interp.eval(interp.env.clone(), expr.value()) {
                 Ok(_) => panic!("Failure was expected, but success happened!"),
                 Err(e) => assert_eq!(e, *expected),
             }
@@ -51,22 +51,22 @@ fn test_cond() {
     let mut heap = interp.heap.borrow_mut();
 
     let cond_expr_true = heap.alloc_list(&[
-        cond,
-        tru,
+        cond.value(),
+        tru.value(),
         Value::Number(Number::Int(42)),
         Value::Number(Number::Int(0)),
     ]);
 
     let cond_expr_false = heap.alloc_list(&[
-        cond,
-        fls,
+        cond.value(),
+        fls.value(),
         Value::Number(Number::Int(42)),
         Value::Number(Number::Int(0)),
     ]);
     drop(heap);
 
-    eval_expr(&interp, cond_expr_true);
-    eval_expr(&interp, cond_expr_false);
+    eval_expr(&interp, cond_expr_true.value());
+    eval_expr(&interp, cond_expr_false.value());
 }
 
 #[test]
@@ -78,36 +78,36 @@ fn test_nested_expr() {
     let mut heap = interp.heap.borrow_mut();
 
     let expr = heap.alloc_list(&[
-        mul,
+        mul.value(),
         Value::Number(Number::Int(2)),
         Value::Number(Number::Int(3)),
     ]);
 
-    let list: Value = heap.alloc_list(&[
-        add,
-        expr,
+    let list = heap.alloc_list(&[
+        add.value(),
+        expr.value(),
         Value::Number(Number::Int(1)),
         Value::Number(Number::Int(2)),
     ]);
     drop(heap);
 
-    eval_expr(&interp, list);
+    eval_expr(&interp, list.value());
 }
 
 #[test]
 fn test_setbang_special_form() {
     let interp = Interp::new();
 
-    let define = interp.lookup("define");
+    let define = interp.lookup("define").value();
     let x = interp.lookup("x");
 
     let mut heap = interp.heap.borrow_mut();
 
-    let expr = heap.alloc_list(&[define, x, Value::Number(Number::Int(1))]);
+    let expr = heap.alloc_list(&[define, x.value(), Value::Number(Number::Int(1))]);
     drop(heap);
 
-    eval_expr(&interp, expr);
-    eval_expr(&interp, x);
+    eval_expr(&interp, expr.value());
+    eval_expr(&interp, x.value());
 }
 
 #[test]

@@ -1,5 +1,3 @@
-use std::process;
-
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 use scheme::parser::Parser;
@@ -8,17 +6,14 @@ use scheme::types::Value;
 use scheme::interp::Interp;
 
 fn eval_expr(interp: &Interp, expr: Value) {
-    let mut result = interp.expand(expr);
-    if let Ok(expr) = result {
-        let env = interp.env.clone();
-        result = interp.eval(env, expr);
-    }
-    match result {
-        Ok(val) => {
-            println!(" = {}", interp.display(val));
-        }
-        Err(e) => eprintln!("{}", e),
-    }
+    let expansion = interp.expand(expr);
+    expansion
+        .and_then(|expanded| {
+            let env = interp.env.clone();
+            interp.eval(env, expanded.value())
+        })
+        .map(|value| println!(" = {}", interp.display(value)))
+        .unwrap_or_else(|e| eprintln!("{}", e));
 }
 
 const HISTORY_FILENAME: &str = ".scheme.history";
@@ -38,8 +33,7 @@ fn repl(interp: &Interp) {
                 let mut parser = Parser::new(line.as_bytes());
                 let expr = parser.read(interp);
                 match expr {
-                    Ok(Value::Nil) => process::exit(0),
-                    Ok(expr) => eval_expr(interp, expr),
+                    Ok(expr) => eval_expr(interp, expr.value()),
                     Err(e) => eprintln!("Error: {:?}", e),
                 }
             }

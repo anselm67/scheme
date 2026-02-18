@@ -5,7 +5,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use crate::env::Env;
-use crate::heap;
+use crate::heap::{self, Handle};
 use crate::heap::{Apply, Closure, HeapObject, Keyword, OutputPort, Vector};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
@@ -63,11 +63,11 @@ impl Interp {
             input_stack: RefCell::new(vec![]),
             output_stack: RefCell::new(vec![]),
 
-            list: list,
-            append: append,
-            quasiquote: quasiquote,
-            unquote: unquote,
-            unquote_splicing: unquote_splicing,
+            list: list.value(),
+            append: append.value(),
+            quasiquote: quasiquote.value(),
+            unquote: unquote.value(),
+            unquote_splicing: unquote_splicing.value(),
         };
         interp.init();
         interp
@@ -164,12 +164,11 @@ impl Interp {
         }
     }
 
+    // TODO Take a Handle rather than a Value
     pub fn define(&self, name: &str, value: Value) -> Value {
         let symbol = self.heap.borrow_mut().intern_symbol(name);
-        if let Value::Object(id) = symbol {
-            self.env.borrow_mut().define(id, value);
-        }
-        symbol
+        self.env.borrow_mut().define(symbol.id(), value);
+        symbol.value()
     }
 
     pub fn define_primitive(&self, name: &str, func: heap::PrimitiveFn) {
@@ -195,7 +194,7 @@ impl Interp {
         Ok(acc)
     }
 
-    pub fn lookup(&self, name: &str) -> Value {
+    pub fn lookup(&self, name: &str) -> Handle {
         self.heap.borrow_mut().intern_symbol(name)
     }
 
@@ -505,29 +504,39 @@ impl Interp {
         }
     }
 
-    pub fn quote(&self, obj: Value) -> Result<Value, SchemeError> {
+    pub fn quote(&self, obj: Value) -> Result<Handle, SchemeError> {
         let value = &[Value::Object(Keyword::Quote as usize), obj];
         Ok(self.heap.borrow_mut().alloc_list(value))
     }
 
-    pub fn quasiquote(&self, obj: Value) -> Result<Value, SchemeError> {
-        let mut heap = self.heap.borrow_mut();
-        Ok(heap.alloc_list(&[self.quasiquote, obj]))
+    pub fn quote_from_handle(&self, obj: Handle) -> Result<Handle, SchemeError> {
+        let value = &[Value::Object(Keyword::Quote as usize), obj.value()];
+        Ok(self.heap.borrow_mut().alloc_list(value))
     }
 
-    pub fn unquote(&self, obj: Value) -> Result<Value, SchemeError> {
+    pub fn quasiquote(&self, obj: Handle) -> Result<Handle, SchemeError> {
         let mut heap = self.heap.borrow_mut();
-        Ok(heap.alloc_list(&[self.unquote, obj]))
+        Ok(heap.alloc_list(&[self.quasiquote, obj.value()]))
     }
 
-    pub fn unquote_splicing(&self, obj: Value) -> Result<Value, SchemeError> {
+    pub fn unquote(&self, obj: Handle) -> Result<Handle, SchemeError> {
         let mut heap = self.heap.borrow_mut();
-        Ok(heap.alloc_list(&[self.unquote_splicing, obj]))
+        Ok(heap.alloc_list(&[self.unquote, obj.value()]))
     }
 
-    pub fn list(&self, obj: Value) -> Result<Value, SchemeError> {
+    pub fn unquote_splicing(&self, obj: Handle) -> Result<Handle, SchemeError> {
+        let mut heap = self.heap.borrow_mut();
+        Ok(heap.alloc_list(&[self.unquote_splicing, obj.value()]))
+    }
+
+    pub fn list(&self, obj: Value) -> Result<Handle, SchemeError> {
         let mut heap = self.heap.borrow_mut();
         Ok(heap.alloc_list(&[self.list, obj]))
+    }
+
+    pub fn list_from_handle(&self, obj: Handle) -> Result<Handle, SchemeError> {
+        let mut heap = self.heap.borrow_mut();
+        Ok(heap.alloc_list(&[self.list, obj.value()]))
     }
 
     fn is_splicing(&self, value: Value) -> Result<Option<Value>, SchemeError> {
@@ -541,29 +550,31 @@ impl Interp {
         }
     }
 
-    pub fn expand_quasiquote(&self, expr: Value) -> Result<Value, SchemeError> {
+    pub fn expand_quasiquote(&self, expr: Value) -> Result<Handle, SchemeError> {
         match expr {
             Value::Object(id) => {
                 let obj = { self.heap.borrow().get(id).clone() };
                 match obj {
-                    HeapObject::Pair(car, cdr) if car == self.unquote => self.to_car(cdr),
+                    HeapObject::Pair(car, cdr) if car == self.unquote => {
+                        Ok(Handle::Value(self.to_car(cdr)?))
+                    }
                     HeapObject::Pair(..) => {
                         let mut p = expr;
-                        let mut args = vec![self.append];
+                        let mut args = vec![Handle::Value(self.append)];
                         loop {
                             if let Some((car, cdr)) = self.is_pair(p) {
                                 if let Some(spliced) = self.is_splicing(car)? {
-                                    args.push(spliced)
+                                    args.push(Handle::Value(spliced))
                                 } else {
-                                    args.push(self.list(self.expand_quasiquote(car)?)?);
+                                    args.push(self.list_from_handle(self.expand_quasiquote(car)?)?);
                                 }
                                 p = cdr;
                             } else if p == Value::Nil {
                                 let mut heap = self.heap.borrow_mut();
-                                return Ok(heap.alloc_list(&args));
+                                return Ok(heap.alloc_list_from_handles(&args));
                             } else {
                                 let mut heap = self.heap.borrow_mut();
-                                return Ok(heap.alloc_list_with_cdr(&args, p));
+                                return Ok(heap.alloc_list_with_cdr_from_handles(&args, p));
                             }
                         }
                     }
@@ -574,16 +585,17 @@ impl Interp {
         }
     }
 
-    fn expand_macro(&self, func: Value, args: Value) -> Result<Value, SchemeError> {
-        let args = self.fold_list(args, Vec::new(), |mut acc, arg| {
+    fn expand_macro(&self, func: Value, args: Value) -> Result<Handle, SchemeError> {
+        let arg_handles = self.fold_list(args, Vec::new(), |mut acc, arg| {
             acc.push(self.expand(arg)?);
             Ok(acc)
-        });
-        let expansion = match func.apply(self, self.env.clone(), args?)? {
+        })?;
+        let args: Vec<Value> = arg_handles.iter().map(|h| h.value()).collect();
+        let expansion = match func.apply(self, self.env.clone(), args)? {
             EvalResult::Done(value) => value,
             EvalResult::Continuation(next_env, next_expr) => self.eval(next_env, next_expr)?,
         };
-        Ok(expansion)
+        Ok(Handle::Value(expansion))
     }
 
     fn get_macro(&self, id: GcId) -> Option<Value> {
@@ -591,36 +603,37 @@ impl Interp {
         self.env.borrow().macros.get(&id).cloned()
     }
 
-    pub fn expand(&self, expr: Value) -> Result<Value, SchemeError> {
+    pub fn expand(&self, expr: Value) -> Result<Handle, SchemeError> {
         if let Some((car, cdr)) = self.is_pair(expr) {
             if let Value::Object(id) = car
                 && id == 8
             {
-                Ok(expr)
+                Ok(Handle::Value(expr))
             } else if let Value::Object(id) = car
                 && let Some(func) = self.get_macro(id)
             {
-                Ok(self.expand(self.expand_macro(func, cdr)?)?)
+                let expansion = self.expand_macro(func, cdr)?;
+                Ok(self.expand(expansion.value())?)
             } else {
                 let mut updated = false;
                 let items = self.fold_list(expr, vec![], |mut acc, item| {
                     let expansion = self.expand(item)?;
-                    updated = updated || expansion != item;
+                    updated = updated || expansion.value() != item;
                     acc.push(expansion);
                     Ok(acc)
                 });
                 if updated {
                     let expansion = {
                         let mut heap = self.heap.borrow_mut();
-                        heap.alloc_list(&items?).clone()
+                        heap.alloc_list_from_handles(&items?)
                     };
                     Ok(expansion)
                 } else {
-                    Ok(expr)
+                    Ok(Handle::Value(expr))
                 }
             }
         } else {
-            Ok(expr)
+            Ok(Handle::Value(expr))
         }
     }
 
@@ -628,11 +641,12 @@ impl Interp {
         let mut parser = Parser::from_file(path)?;
         let mut retval = Value::Eof;
         loop {
-            match parser.read(self)? {
-                Value::Eof => return Ok(retval),
-                expr => {
-                    retval = self.expand(expr)?;
-                    retval = self.eval(self.env.clone(), retval)?;
+            let handle = parser.read(self)?;
+            match handle {
+                Handle::Value(Value::Eof) => return Ok(retval),
+                _ => {
+                    let expansion = self.expand(handle.value())?;
+                    retval = self.eval(self.env.clone(), expansion.value())?;
                 }
             }
         }

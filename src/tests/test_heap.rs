@@ -7,8 +7,8 @@ use crate::types::{Number, Value};
 fn test_intern_symbol() {
     let mut heap = Heap::new(128);
 
-    let sym1 = heap.intern_symbol("test");
-    let sym2 = heap.intern_symbol("test");
+    let sym1 = heap.intern_symbol("test").id();
+    let sym2 = heap.intern_symbol("test").id();
 
     assert_eq!(sym1, sym2, "Interned symbols should be the same");
 }
@@ -21,7 +21,7 @@ fn test_eval_symbol() {
     let symbol = heap.intern_symbol("test-symbol");
     drop(heap);
 
-    let result = interp.eval(interp.env.clone(), symbol);
+    let result = interp.eval(interp.env.clone(), symbol.value());
     assert!(
         matches!(result, Err(UnboundVariable(_))),
         "Evaluated result should be an UnboundVariable error"
@@ -31,7 +31,7 @@ fn test_eval_symbol() {
     let value = Value::Number(Number::Int(32));
     interp.define("test-symbol", value);
     assert!(
-        matches!(interp.eval(interp.env.clone(), symbol), Ok(x) if x == value),
+        matches!(interp.eval(interp.env.clone(), symbol.value()), Ok(x) if x == value),
         "Evaluated symbol should return bound value"
     );
 }
@@ -40,7 +40,7 @@ fn test_eval_symbol() {
 fn test_eval_string() {
     let interp = Interp::new();
     let mut heap = interp.heap.borrow_mut();
-    let string = heap.alloc_string("Hello, World!");
+    let string = heap.alloc_string("Hello, World!").value();
     drop(heap);
     let Value::Object(string_id) = string else {
         panic!("Expected Value::Object");
@@ -57,8 +57,8 @@ fn test_true_and_false_symbols() {
     let interp = Interp::new();
     let mut heap = interp.heap.borrow_mut();
 
-    let true_sym = heap.intern_symbol("#t");
-    let false_sym = heap.intern_symbol("#f");
+    let true_sym = heap.intern_symbol("#t").value();
+    let false_sym = heap.intern_symbol("#f").value();
     drop(heap);
 
     assert!(

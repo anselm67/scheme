@@ -2,6 +2,7 @@ use std::io::{BufReader, Bytes, Read};
 use std::iter::Peekable;
 use std::path::{Path, PathBuf};
 
+use crate::heap::Handle;
 use crate::interp::Interp;
 use crate::types::{Number, SchemeError, Value};
 
@@ -33,7 +34,7 @@ impl<R: Read> Parser<R> {
         ch
     }
 
-    fn syntax_error(&self, msg: String) -> Result<Value, SchemeError> {
+    fn syntax_error<T>(&self, msg: String) -> Result<T, SchemeError> {
         let path_str = if let Some(ref path) = self.path { 
             path.to_string_lossy().to_string() 
         } else { 
@@ -80,7 +81,7 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn parse_number_with_sign(&mut self, sign: Option<u8>) -> Result<Value, SchemeError> {
+    fn parse_number_with_sign(&mut self, sign: Option<u8>) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         if let Some(ch) = sign {
             token.push(ch as char);
@@ -116,22 +117,22 @@ impl<R: Read> Parser<R> {
         }
         if has_dot || has_exponent {
             match token.parse::<f64>() {
-                Ok(num) => Ok(Value::Number(Number::Float(num))),
+                Ok(num) => Ok(Handle::Value(Value::Number(Number::Float(num)))),
                 Err(_) => self.syntax_error(format!("Invalid float number: {}", token)),  
             }
         } else {    
             match token.parse::<i64>() {
-                Ok(num) => Ok(Value::Number(Number::Int(num))),
+                Ok(num) => Ok(Handle::Value(Value::Number(Number::Int(num)))),
                 Err(_) => self.syntax_error(format!("Invalid integer number: {}", token)),  
             }
         }
     }
 
-    fn parse_number(&mut self) -> Result<Value, SchemeError> {
+    fn parse_number(&mut self) -> Result<Handle, SchemeError> {
         self.parse_number_with_sign(None)
     }
 
-    fn parse_symbol_with_lead(&mut self, interp: &Interp, lead: Option<u8>) -> Result<Value, SchemeError> {
+    fn parse_symbol_with_lead(&mut self, interp: &Interp, lead: Option<u8>) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         if let Some(ch) = lead {
             token.push(ch as char)
@@ -147,11 +148,11 @@ impl<R: Read> Parser<R> {
         return Ok(interp.lookup(&token))
     }
 
-    fn parse_symbol(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
+    fn parse_symbol(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
         return self.parse_symbol_with_lead(interp, None)
     }
 
-    fn parse_hash_number(&mut self, radix: u32) -> Result<Value, SchemeError> {
+    fn parse_hash_number(&mut self, radix: u32) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         while let Some(byte) = self.peek() {
             let ch = byte as char;
@@ -163,12 +164,12 @@ impl<R: Read> Parser<R> {
             }
         }
         match i64::from_str_radix(&token, radix) {
-            Ok(num) => Ok(Value::Number(Number::Int(num))),
+            Ok(num) => Ok(Handle::Value(Value::Number(Number::Int(num)))),
             Err(_) => self.syntax_error(format!("Invalid '#xx' number {token}."))
         }
     }
 
-    fn parse_hash_character(&mut self) -> Result<Value, SchemeError> {
+    fn parse_hash_character(&mut self) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         while let Some(ch) = self.peek() {
             let ch = ch as char;
@@ -180,25 +181,25 @@ impl<R: Read> Parser<R> {
             }
         }
         if token.len() == 1 {
-            Ok(Value::Char(token.as_bytes()[0]))
+            Ok(Handle::Value(Value::Char(token.as_bytes()[0])))
         } else {
             match token.to_ascii_lowercase().as_str() {
-                "space" => Ok(Value::Char(32)),
-                "backspace" => Ok(Value::Char(8)),
-                "tab" => Ok(Value::Char(9)),
-                "newline" => Ok(Value::Char(10)),
-                "return" => Ok(Value::Char(13)),
+                "space" => Ok(Handle::Value(Value::Char(32))),
+                "backspace" => Ok(Handle::Value(Value::Char(8))),
+                "tab" => Ok(Handle::Value(Value::Char(9))),
+                "newline" => Ok(Handle::Value(Value::Char(10))),
+                "return" => Ok(Handle::Value(Value::Char(13))),
                 _ => self.syntax_error(format!("Invalid #\\ token {}.", token))
             }
         }
     }
 
-    fn parse_hash(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
+    fn parse_hash(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
         self.check_for(b'#')?;
         match self.next() {
             Some(ch) if ch == b'(' => self.parse_vector(interp),
-            Some(ch) if ch.to_ascii_lowercase() == b't' => Ok(Value::Boolean(true)),
-            Some(ch) if ch.to_ascii_lowercase() == b'f' => Ok(Value::Boolean(false)),
+            Some(ch) if ch.to_ascii_lowercase() == b't' => Ok(Handle::Value(Value::Boolean(true))),
+            Some(ch) if ch.to_ascii_lowercase() == b'f' => Ok(Handle::Value(Value::Boolean(false))),
             Some(ch) if ch == b'b' => self.parse_hash_number(2),
             Some(ch) if ch == b'o' => self.parse_hash_number(8),
             Some(ch) if ch == b'd' => self.parse_hash_number(10),
@@ -213,7 +214,7 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn parse_string(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
+    fn parse_string(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         self.check_for(b'"')?;
         while let Some(ch) = self.peek() {
@@ -237,14 +238,14 @@ impl<R: Read> Parser<R> {
         ))
     }
 
-    fn parse_list(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
+    fn parse_list(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
         let mut items = Vec::new();
         self.skip_whitespace();
         while let Some(c) = self.peek() {
             match c {
                 b')' => {
                     self.check_for(b')')?;
-                    return Ok(interp.heap.borrow_mut().alloc_list(&items));
+                    return Ok(interp.heap.borrow_mut().alloc_list_from_handles(&items));
                 },
                 b'.' => {
                     self.next();
@@ -252,9 +253,9 @@ impl<R: Read> Parser<R> {
                     self.skip_whitespace();
                     self.check_for(b')')?;
                     let mut heap = interp.heap.borrow_mut();
-                    let car = heap.alloc_list(&items);
-                    let tail = heap.last(car)?;
-                    heap.setcdr(interp.to_object(tail)?, cdr)?;
+                    let car = heap.alloc_list_from_handles(&items);
+                    let tail = heap.last(car.value())?;
+                    heap.setcdr(interp.to_object(tail)?, cdr.value())?;
                     return Ok(car);
                 },
                 _ => {
@@ -268,7 +269,7 @@ impl<R: Read> Parser<R> {
         ))
     }
 
-    fn parse_vector(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
+    fn parse_vector(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
         let mut list = Vec::new();
         self.skip_whitespace();
         while let Some(c) = self.peek() {
@@ -277,10 +278,10 @@ impl<R: Read> Parser<R> {
             self.skip_whitespace();
         }
         self.check_for(b')')?;
-        return Ok(interp.heap.borrow_mut().alloc_vector(&list));
+        return Ok(interp.heap.borrow_mut().alloc_vector_from_handles(&list));
     }
 
-    pub fn read(&mut self, interp: &Interp) -> Result<Value, SchemeError> {
+    pub fn read(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
         self.skip_whitespace();
         let current = self.peek();
         return match current {
@@ -328,13 +329,13 @@ impl<R: Read> Parser<R> {
             },
             Some(ch) if ch == b'\'' => {
                 self.next();
-                interp.quote(self.read(interp)?)
+                interp.quote_from_handle(self.read(interp)?)
             },
             Some(ch) => {
                 self.next();
                 self.syntax_error(format!("Unexpected character {}", ch as char))
             },
-            None => Ok(Value::Eof),
+            None => Ok(Handle::Value(Value::Eof)),
         };
     }
 }
@@ -371,7 +372,7 @@ mod tests {
         for (input, expect) in inputs.iter().zip(expected.iter()) {
             let mut parser = Parser::new(input.as_bytes());
             let result = parser.parse_number().unwrap();
-            assert_eq!(&result, expect);
+            assert_eq!(&result.value(), expect);
         }
     }
 
@@ -396,7 +397,7 @@ mod tests {
         let interp = Interp::new();
         for (text, value) in ok_inputs {
             let mut parser = Parser::new(text.as_bytes());
-            assert_eq!(Ok(value), parser.parse_hash(&interp))
+            assert_eq!(value, parser.parse_hash(&interp).expect("valid input").value())
         }
     }
 
@@ -409,7 +410,7 @@ mod tests {
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
             let result = parser.parse_symbol(&interp);
-            assert!(matches!(result, Ok(Value::Object(_id))));
+            assert!(matches!(result.expect("valid symbol").value(), Value::Object(_id)));
         }
     }
 
@@ -422,7 +423,7 @@ mod tests {
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
             let result = parser.parse_string(&interp);
-            assert!(matches!(result, Ok(Value::Object(_id))));
+            assert!(matches!(result.expect("valid string").value(), Value::Object(_id)));
         }
     }
 
@@ -430,16 +431,14 @@ mod tests {
     fn test_parse_list() {
         let interp = Interp::new();
         let inputs = vec![
-            "'(1 . 2)",
+            "1 . 2)",
             ")",
             "1 2 3)"
         ];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
             let result = parser.parse_list(&interp);
-            if let Ok(list) = result {
-                println!("{}", interp.display(list))
-            }
+            assert!(result.is_ok());
         }
     }
 }

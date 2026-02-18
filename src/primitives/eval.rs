@@ -42,7 +42,8 @@ fn primitive_expand(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(interp.expand(args[0])?)
+    let expansion = interp.expand(args[0])?;
+    EvalResult::done(expansion.value())
 }
 
 fn primitive_equal(
@@ -89,7 +90,7 @@ fn primitive_with_exception_handler(
                 .heap
                 .borrow_mut()
                 .alloc_string(format!("[{}]: {}", label, message));
-            EvalResult::done(interp.apply(env.clone(), handler, vec![string])?)
+            EvalResult::done(interp.apply(env.clone(), handler, vec![string.value()])?)
         }
     }
 }
@@ -123,7 +124,7 @@ fn primitive_closure_body(
         closure.get_body()
     };
     let mut heap = interp.heap.borrow_mut();
-    EvalResult::done(heap.alloc_list(&body))
+    EvalResult::done(heap.alloc_list(&body).value())
 }
 
 fn primitive_symbol_p(

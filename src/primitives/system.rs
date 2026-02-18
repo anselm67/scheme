@@ -1,7 +1,10 @@
 use std::{cell::RefCell, process, rc::Rc};
 
 use crate::{
-    env::Env, interp::Interp, markset::MarkSet, types::{EvalResult, SchemeError, Value}
+    env::Env,
+    interp::Interp,
+    markset::MarkSet,
+    types::{EvalResult, SchemeError, Value},
 };
 
 fn primitive_gc(

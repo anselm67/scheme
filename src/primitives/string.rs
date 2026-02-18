@@ -31,7 +31,8 @@ fn primitive_make_string(
         interp
             .heap
             .borrow_mut()
-            .alloc_string(fill_char.to_string().repeat(count as usize)),
+            .alloc_string(fill_char.to_string().repeat(count as usize))
+            .value(),
     )
 }
 
@@ -45,7 +46,7 @@ fn primitive_string(
         let ch = interp.to_char(*arg)?;
         buf.push(ch);
     }
-    EvalResult::done(interp.heap.borrow_mut().alloc_string(buf))
+    EvalResult::done(interp.heap.borrow_mut().alloc_string(buf).value())
 }
 
 fn primitive_string_to_list(
@@ -58,7 +59,7 @@ fn primitive_string_to_list(
         let string = interp.to_string(args[0])?;
         string.chars().map(|ch| Value::Char(ch as u8)).collect()
     };
-    EvalResult::done(interp.heap.borrow_mut().alloc_list(&chars))
+    EvalResult::done(interp.heap.borrow_mut().alloc_list(&chars).value())
 }
 
 fn primitive_list_to_string(
@@ -72,7 +73,7 @@ fn primitive_list_to_string(
         acc.push(ch);
         Ok(acc)
     })?;
-    EvalResult::done(interp.heap.borrow_mut().alloc_string(&chars))
+    EvalResult::done(interp.heap.borrow_mut().alloc_string(&chars).value())
 }
 
 fn primitive_string_length(
@@ -255,7 +256,7 @@ fn primitive_string_append(
         buf.push_str(&string);
     }
     let mut heap = interp.heap.borrow_mut();
-    EvalResult::done(heap.alloc_string(buf))
+    EvalResult::done(heap.alloc_string(buf).value())
 }
 
 fn primitive_substring(
@@ -285,7 +286,8 @@ fn primitive_substring(
             interp
                 .heap
                 .borrow_mut()
-                .alloc_string(&string[start_index as usize..end_index as usize]),
+                .alloc_string(&string[start_index as usize..end_index as usize])
+                .value(),
         )
     }
 }
@@ -297,7 +299,7 @@ fn primitive_string_copy(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let string = interp.to_string(args[0])?.to_string();
-    EvalResult::done(interp.heap.borrow_mut().alloc_string(string))
+    EvalResult::done(interp.heap.borrow_mut().alloc_string(string).value())
 }
 
 fn primitive_string_fill(
@@ -314,7 +316,7 @@ fn primitive_string_fill(
     for _ in 0..count {
         string.push(ch);
     }
-    EvalResult::done(interp.heap.borrow_mut().alloc_string(string))
+    EvalResult::done(interp.heap.borrow_mut().alloc_string(string).value())
 }
 
 pub fn register(interp: &Interp) {

@@ -129,7 +129,7 @@ fn primitive_get_output_string(
     if let Some(buffer) = output.string_buffer {
         let bytes = buffer.borrow();
         let string = String::from_utf8_lossy(&bytes).into_owned();
-        EvalResult::done(interp.heap.borrow_mut().alloc_string(string))
+        EvalResult::done(interp.heap.borrow_mut().alloc_string(string).value())
     } else {
         Err(SchemeError::TypeError(format!(
             "This OutputPort isn't backed by a string."
@@ -253,7 +253,7 @@ fn primitive_read(
     if let Some(ref mut reader) = *borrow {
         let mut parser = Parser::new(reader);
         let expr = parser.read(interp)?;
-        EvalResult::done(expr)
+        EvalResult::done(expr.value())
     } else {
         Err(SchemeError::IOError(format!(
             "Attempt to read from closed input port."
