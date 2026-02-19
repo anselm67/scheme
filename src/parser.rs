@@ -81,7 +81,7 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn parse_number_with_sign(&mut self, sign: Option<u8>) -> Result<Handle, SchemeError> {
+    fn parse_number_with_sign(&mut self, interp: &Interp, sign: Option<u8>) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         if let Some(ch) = sign {
             token.push(ch as char);
@@ -117,19 +117,19 @@ impl<R: Read> Parser<R> {
         }
         if has_dot || has_exponent {
             match token.parse::<f64>() {
-                Ok(num) => Ok(Handle::Value(Value::Number(Number::Float(num)))),
+                Ok(num) => Ok(interp.handle(Value::Number(Number::Float(num)))),
                 Err(_) => self.syntax_error(format!("Invalid float number: {}", token)),  
             }
         } else {    
             match token.parse::<i64>() {
-                Ok(num) => Ok(Handle::Value(Value::Number(Number::Int(num)))),
+                Ok(num) => Ok(interp.handle(Value::Number(Number::Int(num)))),
                 Err(_) => self.syntax_error(format!("Invalid integer number: {}", token)),  
             }
         }
     }
 
-    fn parse_number(&mut self) -> Result<Handle, SchemeError> {
-        self.parse_number_with_sign(None)
+    fn parse_number(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+        self.parse_number_with_sign(interp, None)
     }
 
     fn parse_symbol_with_lead(&mut self, interp: &Interp, lead: Option<u8>) -> Result<Handle, SchemeError> {
@@ -152,7 +152,7 @@ impl<R: Read> Parser<R> {
         return self.parse_symbol_with_lead(interp, None)
     }
 
-    fn parse_hash_number(&mut self, radix: u32) -> Result<Handle, SchemeError> {
+    fn parse_hash_number(&mut self, interp: &Interp, radix: u32) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         while let Some(byte) = self.peek() {
             let ch = byte as char;
@@ -164,12 +164,12 @@ impl<R: Read> Parser<R> {
             }
         }
         match i64::from_str_radix(&token, radix) {
-            Ok(num) => Ok(Handle::Value(Value::Number(Number::Int(num)))),
+            Ok(num) => Ok(interp.handle(Value::Number(Number::Int(num)))),
             Err(_) => self.syntax_error(format!("Invalid '#xx' number {token}."))
         }
     }
 
-    fn parse_hash_character(&mut self) -> Result<Handle, SchemeError> {
+    fn parse_hash_character(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         while let Some(ch) = self.peek() {
             let ch = ch as char;
@@ -181,14 +181,14 @@ impl<R: Read> Parser<R> {
             }
         }
         if token.len() == 1 {
-            Ok(Handle::Value(Value::Char(token.as_bytes()[0])))
+            Ok(interp.handle(Value::Char(token.as_bytes()[0])))
         } else {
             match token.to_ascii_lowercase().as_str() {
-                "space" => Ok(Handle::Value(Value::Char(32))),
-                "backspace" => Ok(Handle::Value(Value::Char(8))),
-                "tab" => Ok(Handle::Value(Value::Char(9))),
-                "newline" => Ok(Handle::Value(Value::Char(10))),
-                "return" => Ok(Handle::Value(Value::Char(13))),
+                "space" => Ok(interp.handle(Value::Char(32))),
+                "backspace" => Ok(interp.handle(Value::Char(8))),
+                "tab" => Ok(interp.handle(Value::Char(9))),
+                "newline" => Ok(interp.handle(Value::Char(10))),
+                "return" => Ok(interp.handle(Value::Char(13))),
                 _ => self.syntax_error(format!("Invalid #\\ token {}.", token))
             }
         }
@@ -198,13 +198,13 @@ impl<R: Read> Parser<R> {
         self.check_for(b'#')?;
         match self.next() {
             Some(ch) if ch == b'(' => self.parse_vector(interp),
-            Some(ch) if ch.to_ascii_lowercase() == b't' => Ok(Handle::Value(Value::Boolean(true))),
-            Some(ch) if ch.to_ascii_lowercase() == b'f' => Ok(Handle::Value(Value::Boolean(false))),
-            Some(ch) if ch == b'b' => self.parse_hash_number(2),
-            Some(ch) if ch == b'o' => self.parse_hash_number(8),
-            Some(ch) if ch == b'd' => self.parse_hash_number(10),
-            Some(ch) if ch == b'x' => self.parse_hash_number(16),
-            Some(ch) if ch == b'\\' => self.parse_hash_character(),
+            Some(ch) if ch.to_ascii_lowercase() == b't' => Ok(interp.handle(Value::Boolean(true))),
+            Some(ch) if ch.to_ascii_lowercase() == b'f' => Ok(interp.handle(Value::Boolean(false))),
+            Some(ch) if ch == b'b' => self.parse_hash_number(interp, 2),
+            Some(ch) if ch == b'o' => self.parse_hash_number(interp, 8),
+            Some(ch) if ch == b'd' => self.parse_hash_number(interp, 10),
+            Some(ch) if ch == b'x' => self.parse_hash_number(interp, 16),
+            Some(ch) if ch == b'\\' => self.parse_hash_character(interp),
             Some(ch) => self.syntax_error(format!(
                 "Invalid char in # sequence {}", ch as char
             )),
@@ -291,13 +291,13 @@ impl<R: Read> Parser<R> {
                 self.next();
                 match self.peek() {
                     Some(next) if next.is_ascii_digit() => {
-                        self.parse_number_with_sign(Some(ch) )
+                        self.parse_number_with_sign(interp, Some(ch) )
                     } ,
                     _ => self.parse_symbol_with_lead(interp, Some(ch))
                 }
             },
             Some(ch) if ch.is_ascii_digit() || ch == b'-' || ch == b'+' => {
-                self.parse_number()
+                self.parse_number(interp)
             },
             Some(ch) if self.is_symbol(ch) => {
                 self.parse_symbol(interp)
@@ -333,7 +333,7 @@ impl<R: Read> Parser<R> {
                 self.next();
                 self.syntax_error(format!("Unexpected character {}", ch as char))
             },
-            None => Ok(Handle::Value(Value::Eof)),
+            None => Ok(interp.handle(Value::Eof)),
         };
     }
 }
@@ -357,6 +357,7 @@ mod tests {
 
     #[test]
     fn test_parse_number() {
+        let interp = Interp::new();
         let inputs = vec!["42", "-3", "0", "3.14", "-0.001", "2e10", "-1.5E-3"];
         let expected = vec![
             Value::Number(Number::Int(42)),
@@ -369,7 +370,7 @@ mod tests {
         ];  
         for (input, expect) in inputs.iter().zip(expected.iter()) {
             let mut parser = Parser::new(input.as_bytes());
-            let result = parser.parse_number().unwrap();
+            let result = parser.parse_number(&interp).unwrap();
             assert_eq!(&result.value(), expect);
         }
     }

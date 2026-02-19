@@ -1,6 +1,6 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -14,6 +14,8 @@ use crate::types::{DisplayWrapper, EvalResult, GcId, Number, SchemeError, Scheme
 pub struct Interp {
     pub heap: RefCell<heap::Heap>,
     pub env: Rc<RefCell<crate::env::Env>>,
+
+    env_stack: RefCell<Vec<Rc<RefCell<crate::env::Env>>>>,
 
     // IO ports
     input_stack: RefCell<Vec<Value>>,
@@ -45,7 +47,7 @@ impl Interp {
             parent: None,
         };
         let env_handle = Rc::new(RefCell::new(global_env));
-        let heap_handle = RefCell::new(heap::Heap::new(8192));
+        let heap_handle = RefCell::new(heap::Heap::new(4096));
         let (append, list, quasiquote, unquote, unquote_splicing) = {
             let mut heap = heap_handle.borrow_mut();
             (
@@ -59,7 +61,7 @@ impl Interp {
         let interp = Self {
             heap: heap_handle,
             env: env_handle,
-
+            env_stack: RefCell::new(vec![]),
             input_stack: RefCell::new(vec![]),
             output_stack: RefCell::new(vec![]),
 
@@ -85,6 +87,18 @@ impl Interp {
         self.output_stack.borrow_mut().push(output_port.value())
     }
 
+    fn init_scheme(&self) {
+        let text = include_str!("scheme/macros.scm");
+        let mut parser = Parser::new(text.as_bytes());
+        if self.load_from_parser(&mut parser).is_err() {
+            panic!("Failed to load ini code from scheme/macros.scm")
+        }
+    }
+
+    pub fn handle(&self, value: Value) -> Handle {
+        self.heap.borrow().handle(value)
+    }
+
     fn alloc_with_retry<F>(&self, mut alloc_fn: F) -> Handle
     where
         F: FnMut(&mut Heap) -> Result<Handle, SchemeError>,
@@ -93,7 +107,7 @@ impl Interp {
             return result;
         }
         println!("GC Trigered: Out of memory.");
-        // TODO Garbage collect
+        self.gc(None);
         alloc_fn(&mut self.heap.borrow_mut()).expect("Out of memory after GC.")
     }
 
@@ -108,7 +122,7 @@ impl Interp {
     pub fn alloc_list(&self, items: &[Value]) -> Handle {
         items
             .into_iter()
-            .rfold(Handle::from_value(Value::Nil), |acc, val| {
+            .rfold(self.handle(Value::Nil), |acc, val| {
                 self.alloc_pair(*val, acc.value())
             })
     }
@@ -116,25 +130,21 @@ impl Interp {
     pub fn alloc_list_from_handles(&self, items: &[Handle]) -> Handle {
         items
             .into_iter()
-            .rfold(Handle::from_value(Value::Nil), |acc, val| {
+            .rfold(self.handle(Value::Nil), |acc, val| {
                 self.alloc_pair(val.value(), acc.value())
             })
     }
 
     pub fn alloc_list_with_cdr(&self, items: &[Value], cdr: Value) -> Handle {
-        items
-            .into_iter()
-            .rfold(Handle::from_value(cdr), |acc, val| {
-                self.alloc_pair(*val, acc.value())
-            })
+        items.into_iter().rfold(self.handle(cdr), |acc, val| {
+            self.alloc_pair(*val, acc.value())
+        })
     }
 
     pub fn alloc_list_with_cdr_from_handles(&self, items: &[Handle], cdr: Value) -> Handle {
-        items
-            .into_iter()
-            .rfold(Handle::from_value(cdr), |acc, val| {
-                self.alloc_pair(val.value(), acc.value())
-            })
+        items.into_iter().rfold(self.handle(cdr), |acc, val| {
+            self.alloc_pair(val.value(), acc.value())
+        })
     }
 
     pub fn alloc_string(&self, s: impl Into<String>) -> Handle {
@@ -270,6 +280,7 @@ impl Interp {
     fn init(&self) {
         self.init_io();
         crate::primitives::register_all(self);
+        self.init_scheme();
     }
 
     pub fn fold_list<T, F>(&self, list: Value, init: T, mut func: F) -> Result<T, SchemeError>
@@ -298,16 +309,22 @@ impl Interp {
     }
 
     pub fn eval(&self, env: Rc<RefCell<Env>>, expr: Value) -> Result<Value, SchemeError> {
-        let mut current_expr = expr;
-        let mut current_env = env;
+        let mut current_expr = self.handle(expr);
+        let mut current_env = env.clone();
+
         loop {
-            match current_expr.eval(self, current_env)? {
-                EvalResult::Done(value) => return Ok(value),
+            self.env_stack.borrow_mut().push(current_env.clone());
+            match current_expr.value().eval(self, current_env)? {
+                EvalResult::Done(value) => {
+                    self.env_stack.borrow_mut().pop();
+                    return Ok(value);
+                }
                 EvalResult::Continuation(next_env, next_expr) => {
-                    current_expr = next_expr;
+                    current_expr = self.handle(next_expr);
                     current_env = next_env;
                 }
             }
+            self.env_stack.borrow_mut().pop();
         }
     }
 
@@ -650,15 +667,15 @@ impl Interp {
                 let obj = { self.heap.borrow().get(id).clone() };
                 match obj {
                     HeapObject::Pair(car, cdr) if car == self.unquote => {
-                        Ok(Handle::Value(self.to_car(cdr)?))
+                        Ok(self.handle(self.to_car(cdr)?))
                     }
                     HeapObject::Pair(..) => {
                         let mut p = expr;
-                        let mut args = vec![Handle::Value(self.append)];
+                        let mut args = vec![self.handle(self.append)];
                         loop {
                             if let Some((car, cdr)) = self.is_pair(p) {
                                 if let Some(spliced) = self.is_splicing(car)? {
-                                    args.push(Handle::Value(spliced))
+                                    args.push(self.handle(spliced))
                                 } else {
                                     args.push(self.list_from_handle(self.expand_quasiquote(car)?)?);
                                 }
@@ -684,10 +701,12 @@ impl Interp {
         })?;
         let args: Vec<Value> = arg_handles.iter().map(|h| h.value()).collect();
         let expansion = match func.apply(self, self.env.clone(), args)? {
-            EvalResult::Done(value) => value,
-            EvalResult::Continuation(next_env, next_expr) => self.eval(next_env, next_expr)?,
+            EvalResult::Done(value) => self.handle(value),
+            EvalResult::Continuation(next_env, next_expr) => {
+                self.handle(self.eval(next_env, next_expr)?)
+            }
         };
-        Ok(Handle::Value(expansion))
+        Ok(expansion)
     }
 
     fn get_macro(&self, id: GcId) -> Option<Value> {
@@ -700,7 +719,8 @@ impl Interp {
             if let Value::Object(id) = car
                 && id == 8
             {
-                Ok(Handle::Value(expr))
+                /* Keyword::DefineSyntax: no macro expansion in macro definition ! */
+                Ok(self.handle(expr))
             } else if let Value::Object(id) = car
                 && let Some(func) = self.get_macro(id)
             {
@@ -717,26 +737,57 @@ impl Interp {
                 if updated {
                     Ok(self.alloc_list_from_handles(&items?))
                 } else {
-                    Ok(Handle::Value(expr))
+                    Ok(self.handle(expr))
                 }
             }
         } else {
-            Ok(Handle::Value(expr))
+            Ok(self.handle(expr))
+        }
+    }
+
+    fn load_from_parser<R: Read>(&self, parser: &mut Parser<R>) -> Result<Value, SchemeError> {
+        let mut retval = Value::Eof;
+        loop {
+            let handle = parser.read(self)?;
+            match handle.value() {
+                Value::Eof => return Ok(retval),
+                value => {
+                    let expansion = self.expand(value)?;
+                    retval = self.eval(self.env.clone(), expansion.value())?;
+                }
+            }
         }
     }
 
     pub fn load<P: AsRef<Path>>(&self, path: P) -> Result<Value, SchemeError> {
         let mut parser = Parser::from_file(path)?;
-        let mut retval = Value::Eof;
-        loop {
-            let handle = parser.read(self)?;
-            match handle {
-                Handle::Value(Value::Eof) => return Ok(retval),
-                _ => {
-                    let expansion = self.expand(handle.value())?;
-                    retval = self.eval(self.env.clone(), expansion.value())?;
-                }
-            }
+        self.load_from_parser(&mut parser)
+    }
+
+    pub fn gc(&self, env: Option<Rc<RefCell<Env>>>) {
+        let len = { self.heap.borrow().len() };
+        let mut marks = MarkSet::new(len);
+
+        self.mark(&mut marks);
+        self.env.borrow().mark(self, &mut marks);
+        if let Some(env) = env {
+            env.borrow().mark(self, &mut marks);
         }
+        for env in self.env_stack.borrow().iter() {
+            env.borrow().mark(self, &mut marks);
+        }
+
+        // Collects all unreachable objects lying in the heap.
+        let mut heap = self.heap.borrow_mut();
+        let collected = heap.sweep(&marks);
+
+        println!(
+            "gc: env-stack: {} protected {}, marked {} /{} objects, collected {}.",
+            self.env_stack.borrow().len(),
+            heap.get_protected_count(),
+            marks.count(),
+            len,
+            collected
+        );
     }
 }

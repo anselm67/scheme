@@ -1,4 +1,6 @@
-
+; macros.scm
+; This file is bundled with the interpretor and defines all the well known macros
+; and functions that aren't defined as primitives.
 
 (define! cadr (lambda (l) (car (cdr l))))
 (define! cddr (lambda (l) (cdr (cdr l))))

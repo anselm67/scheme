@@ -3,7 +3,6 @@ use std::{cell::RefCell, process, rc::Rc};
 use crate::{
     env::Env,
     interp::Interp,
-    markset::MarkSet,
     types::{EvalResult, SchemeError, Value},
 };
 
@@ -12,24 +11,7 @@ fn primitive_gc(
     env: Rc<RefCell<Env>>,
     _args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
-    // Marks all reachable objects from the environment and the heap's symbols.
-    let len = interp.heap.borrow().len();
-    let mut marks = MarkSet::new(len);
-
-    interp.mark(&mut marks);
-    env.borrow().mark(interp, &mut marks);
-
-    // Collects all unreachable objects lying in the heap.
-    let mut heap = interp.heap.borrow_mut();
-    let collected = heap.sweep(&marks);
-
-    println!(
-        "gc: marked {} /{} objects, collected {}.",
-        marks.count(),
-        len,
-        collected
-    );
-
+    interp.gc(Some(env));
     EvalResult::done(Value::Nil)
 }
 

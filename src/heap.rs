@@ -253,7 +253,7 @@ impl Keyword {
     }
 }
 
-pub enum Handle {
+enum HandleKind {
     Id {
         id: GcId,
         protected_rc: Rc<RefCell<HashMap<GcId, usize>>>,
@@ -261,10 +261,14 @@ pub enum Handle {
     Value(Value),
 }
 
+pub struct Handle {
+    inner: HandleKind,
+}
+
 impl Drop for Handle {
     fn drop(&mut self) {
-        match self {
-            Handle::Id { id, protected_rc } => {
+        match &self.inner {
+            HandleKind::Id { id, protected_rc } => {
                 let mut protected = protected_rc.borrow_mut();
                 if let Some(count) = protected.get_mut(&id) {
                     *count -= 1;
@@ -279,31 +283,34 @@ impl Drop for Handle {
 }
 
 impl Handle {
-    pub fn from_id(id: GcId, protected_rc: Rc<RefCell<HashMap<GcId, usize>>>) -> Self {
+    fn from_id(id: GcId, protected_rc: Rc<RefCell<HashMap<GcId, usize>>>) -> Self {
         let mut protected = protected_rc.borrow_mut();
         let count = protected.entry(id).or_insert(0);
         *count += 1;
-        Self::Id {
-            id,
-            protected_rc: protected_rc.clone(),
+        Self {
+            inner: HandleKind::Id {
+                id,
+                protected_rc: protected_rc.clone(),
+            },
         }
     }
 
-    pub fn from_value(value: Value) -> Self {
-        // TODO Should we protect if matches!(Value::Object(id))
-        Self::Value(value)
+    fn from_value(value: Value) -> Self {
+        Self {
+            inner: HandleKind::Value(value),
+        }
     }
 
     pub fn value(&self) -> Value {
-        match self {
-            Handle::Id { id, .. } => Value::Object(*id),
-            Handle::Value(value) => *value,
+        match &self.inner {
+            HandleKind::Id { id, .. } => Value::Object(*id),
+            HandleKind::Value(value) => *value,
         }
     }
 
     pub fn id(&self) -> GcId {
-        match self {
-            Handle::Id { id, .. } => *id,
+        match &self.inner {
+            HandleKind::Id { id, .. } => *id,
             _ => panic!("Requesting id of a Value Handle !"),
         }
     }
@@ -365,8 +372,19 @@ impl Heap {
         }
     }
 
-    fn handle(&self, id: GcId) -> Handle {
+    fn handle_id(&self, id: GcId) -> Handle {
         Handle::from_id(id, self.protected.clone())
+    }
+
+    pub fn handle(&self, value: Value) -> Handle {
+        match value {
+            Value::Object(id) => Handle::from_id(id, self.protected.clone()),
+            _ => Handle::from_value(value),
+        }
+    }
+
+    pub fn get_protected_count(&self) -> usize {
+        self.protected.borrow().len()
     }
 
     pub fn stats(&self) -> HeapStats {
@@ -446,19 +464,19 @@ impl Heap {
 
     pub fn raw_intern_symbol(&mut self, name: &str) -> Result<Handle, SchemeError> {
         if let Some(&id) = self.symbols.get(name) {
-            Ok(self.handle(id))
+            Ok(self.handle_id(id))
         } else {
             let id: GcId = self.next_id()?;
             self.objects[id] = HeapObject::Symbol(name.to_string());
             self.symbols.insert(name.to_string(), id);
-            Ok(self.handle(id))
+            Ok(self.handle_id(id))
         }
     }
 
     pub fn raw_alloc_pair(&mut self, car: Value, cdr: Value) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Pair(car, cdr);
-        Ok(self.handle(id))
+        Ok(self.handle_id(id))
     }
 
     pub fn last(&self, car: Value) -> Result<Value, SchemeError> {
@@ -497,25 +515,25 @@ impl Heap {
     pub fn raw_alloc_string(&mut self, s: impl Into<String>) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::String(s.into());
-        Ok(self.handle(id))
+        Ok(self.handle_id(id))
     }
 
     pub fn raw_alloc_primitive(&mut self, func: PrimitiveFn) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Primitive(func);
-        Ok(Handle::Value(Value::Object(id)))
+        Ok(self.handle_id(id))
     }
 
     pub fn raw_alloc_closure(&mut self, closure: Closure) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Closure(Box::new(closure));
-        Ok(Handle::Value(Value::Object(id)))
+        Ok(self.handle_id(id))
     }
 
     pub fn raw_alloc_nary_closure(&mut self, closure: Closure) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::NaryClosure(Box::new(closure));
-        Ok(Handle::Value(Value::Object(id)))
+        Ok(self.handle_id(id))
     }
 
     pub fn raw_alloc_vector(&mut self, items: &[Value]) -> Result<Handle, SchemeError> {
@@ -523,7 +541,7 @@ impl Heap {
         self.objects[id] = HeapObject::Vector(Vector {
             data: RefCell::new(items.to_vec()),
         });
-        Ok(self.handle(id))
+        Ok(self.handle_id(id))
     }
 
     pub fn raw_alloc_vector_from_handles(
@@ -534,7 +552,7 @@ impl Heap {
         self.objects[id] = HeapObject::Vector(Vector {
             data: RefCell::new(items.iter().map(|h| h.value()).collect()),
         });
-        Ok(self.handle(id))
+        Ok(self.handle_id(id))
     }
 
     pub fn raw_alloc_input_port(
@@ -543,7 +561,7 @@ impl Heap {
     ) -> Result<Handle, SchemeError> {
         let id = self.next_id()?;
         self.objects[id] = HeapObject::InputPort(input);
-        Ok(Handle::Value(Value::Object(id)))
+        Ok(self.handle_id(id))
     }
 
     pub fn raw_alloc_output_port(
@@ -555,7 +573,7 @@ impl Heap {
             port: output,
             string_buffer: None,
         });
-        Ok(Handle::Value(Value::Object(id)))
+        Ok(self.handle_id(id))
     }
 
     pub fn raw_alloc_output_string_port(&mut self) -> Result<Handle, SchemeError> {
@@ -568,7 +586,7 @@ impl Heap {
             port: Rc::new(RefCell::new(Some(Box::new(writer) as Box<dyn Write>))),
             string_buffer: Some(buffer.clone()),
         });
-        Ok(Handle::Value(Value::Object(id)))
+        Ok(self.handle_id(id))
     }
 
     pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
@@ -692,20 +710,25 @@ impl SchemeObject for GcId {
                     && let Some(keyword) = Keyword::from_id(func_id)
                 {
                     // Special form handling - no args eval.
-                    let args = interp.fold_list(cdr, Vec::new(), |mut acc, arg| {
-                        acc.push(arg);
+                    let arg_handles = interp.fold_list(cdr, Vec::new(), |mut acc, arg| {
+                        acc.push(interp.handle(arg));
                         Ok(acc)
-                    });
-                    Keyword::eval(interp, env.clone(), keyword, &args?)
+                    })?;
+                    let args: Vec<Value> = arg_handles.iter().map(|h| h.value()).collect();
+                    Keyword::eval(interp, env.clone(), keyword, &args)
                 } else {
                     // Regular function call with arg eval.
-                    let args = interp.fold_list(cdr, Vec::new(), |mut acc, arg| {
+                    let arg_handles = interp.fold_list(cdr, Vec::new(), |mut acc, arg| {
                         let value = interp.eval(env.clone(), arg)?;
-                        acc.push(value);
+                        acc.push(interp.handle(value));
                         Ok(acc)
-                    });
+                    })?;
                     let func = interp.eval(env.clone(), car)?;
-                    func.apply(interp, env.clone(), args?)
+                    func.apply(
+                        interp,
+                        env.clone(),
+                        arg_handles.iter().map(|h| h.value()).collect(),
+                    )
                 }
             }
             HeapObject::Symbol(name) => match env.borrow().lookup(id) {
@@ -823,9 +846,9 @@ mod tests {
     fn test_protection() {
         let heap = Heap::new(1024);
         {
-            let _handle1 = heap.handle(1);
+            let _handle1 = heap.handle_id(1);
             assert!(heap.protected.borrow().get(&1).expect("msg") == &1);
-            let _handle2 = heap.handle(1);
+            let _handle2 = heap.handle_id(1);
             assert!(heap.protected.borrow().get(&1).expect("msg") == &2);
         }
         assert!(heap.protected.borrow().is_empty());
