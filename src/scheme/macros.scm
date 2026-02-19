@@ -108,6 +108,14 @@
     (let loop ((lists lists) (acc '()))    
         (if (null? (car lists))
             (reverse acc)
-            (loop (map-cdrs lists) (cons (apply proc (map-cars lists) acc)))))
+            (loop (map-cdrs lists) (cons (apply proc (map-cars lists)) acc))))
 )
  
+ ; TODO Proper definition of write and display.
+(define (newline) (debug "\n"))
+(define! display debug)
+(define! write debug)
+
+(define (boolean? stuff) (or (= stuff #t) (= stuff #f)))
+
+(define! for-each map)

@@ -13,10 +13,17 @@ pub struct Parser<R: Read> {
 }
 
 impl<R: Read> Parser<R> {
-    
     pub fn new(reader: R) -> Self {
         Self {
             path: None,
+            lineno: 1,
+            reader: BufReader::new(reader).bytes().peekable(),
+        }
+    }
+
+    pub fn new_with_name(name: PathBuf, reader: R) -> Self {
+        Self {
+            path: Some(name),
             lineno: 1,
             reader: BufReader::new(reader).bytes().peekable(),
         }
@@ -28,31 +35,40 @@ impl<R: Read> Parser<R> {
 
     fn next(&mut self) -> Option<u8> {
         let ch = self.reader.next()?.ok();
-        if let Some(lf) = ch && lf == b'\n' {
+        if let Some(lf) = ch
+            && lf == b'\n'
+        {
             self.lineno += 1;
         }
         ch
     }
 
     fn syntax_error<T>(&self, msg: String) -> Result<T, SchemeError> {
-        let path_str = if let Some(ref path) = self.path { 
-            path.to_string_lossy().to_string() 
-        } else { 
+        let path_str = if let Some(ref path) = self.path {
+            path.to_string_lossy().to_string()
+        } else {
             "unknown".to_string()
         };
-        Err(SchemeError::SyntaxError(format!("{}:{}: syntax error: {}", 
-            path_str, self.lineno, msg)))
+        Err(SchemeError::SyntaxError(format!(
+            "{}:{}: syntax error: {}",
+            path_str, self.lineno, msg
+        )))
     }
 
     fn check_for(&mut self, expected: u8) -> Result<Value, SchemeError> {
         match self.peek() {
-            Some(actual) if actual == expected => {self.next(); Ok(Value::Unbound) },
+            Some(actual) if actual == expected => {
+                self.next();
+                Ok(Value::Unbound)
+            }
             Some(actual) => self.syntax_error(format!(
-                "Expected '{}', found {}", expected as char, actual as char
+                "Expected '{}', found {}",
+                expected as char, actual as char
             )),
             None => self.syntax_error(format!(
-                "Expected '{}', but reached end of file.", expected as char
-            ))
+                "Expected '{}', but reached end of file.",
+                expected as char
+            )),
         }
     }
 
@@ -61,9 +77,7 @@ impl<R: Read> Parser<R> {
     }
 
     fn is_symbol(&self, ch: u8) -> bool {
-        matches!(ch, b'a'..=b'z' | b'A'..=b'Z' 
-            | b'+' | b'-' | b'*' | b'/'| b'>' | b'<'| b'=' | b'%'
-            | b'!' | b'?')
+        ch.is_ascii_alphanumeric() || b"?+-.!$%&*:/<=>~^_".contains(&ch)
     }
 
     fn skip_whitespace(&mut self) {
@@ -73,7 +87,9 @@ impl<R: Read> Parser<R> {
             } else if ch == b';' {
                 // Skip comment until end of line
                 while let Some(n) = self.next() {
-                    if n == b'\n' { break; }
+                    if n == b'\n' {
+                        break;
+                    }
                 }
             } else {
                 break;
@@ -81,7 +97,11 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn parse_number_with_sign(&mut self, interp: &Interp, sign: Option<u8>) -> Result<Handle, SchemeError> {
+    fn parse_number_with_sign(
+        &mut self,
+        interp: &Interp,
+        sign: Option<u8>,
+    ) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         if let Some(ch) = sign {
             token.push(ch as char);
@@ -90,7 +110,9 @@ impl<R: Read> Parser<R> {
         let mut has_exponent = false;
 
         // Swallows the optional sign.
-        if let Some(ch) = self.peek() && (ch == b'-' || ch == b'+') {
+        if let Some(ch) = self.peek()
+            && (ch == b'-' || ch == b'+')
+        {
             token.push(ch as char);
             self.next();
         }
@@ -98,16 +120,18 @@ impl<R: Read> Parser<R> {
             if ch.is_ascii_digit() {
                 token.push(ch as char);
                 self.next();
-            } else if ch == b'.' && !has_dot && ! has_exponent {
+            } else if ch == b'.' && !has_dot && !has_exponent {
                 has_dot = true;
                 token.push(ch as char);
                 self.next();
-            } else if ch == b'e' || ch == b'E' && ! has_exponent {
+            } else if ch == b'e' || ch == b'E' && !has_exponent {
                 has_exponent = true;
                 token.push(ch as char);
                 self.next();
                 // Exponent sign
-                if let Some(next_ch) = self.peek() && (next_ch == b'-' || next_ch == b'+') {
+                if let Some(next_ch) = self.peek()
+                    && (next_ch == b'-' || next_ch == b'+')
+                {
                     token.push(next_ch as char);
                     self.next();
                 }
@@ -118,12 +142,12 @@ impl<R: Read> Parser<R> {
         if has_dot || has_exponent {
             match token.parse::<f64>() {
                 Ok(num) => Ok(interp.handle(Value::Number(Number::Float(num)))),
-                Err(_) => self.syntax_error(format!("Invalid float number: {}", token)),  
+                Err(_) => self.syntax_error(format!("Invalid float number: {}", token)),
             }
-        } else {    
+        } else {
             match token.parse::<i64>() {
                 Ok(num) => Ok(interp.handle(Value::Number(Number::Int(num)))),
-                Err(_) => self.syntax_error(format!("Invalid integer number: {}", token)),  
+                Err(_) => self.syntax_error(format!("Invalid integer number: {}", token)),
             }
         }
     }
@@ -132,24 +156,28 @@ impl<R: Read> Parser<R> {
         self.parse_number_with_sign(interp, None)
     }
 
-    fn parse_symbol_with_lead(&mut self, interp: &Interp, lead: Option<u8>) -> Result<Handle, SchemeError> {
+    fn parse_symbol_with_lead(
+        &mut self,
+        interp: &Interp,
+        lead: Option<u8>,
+    ) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         if let Some(ch) = lead {
             token.push(ch as char)
         }
         while let Some(ch) = self.peek() {
-            if ch.is_ascii_alphanumeric() || b"!$%&*/:<=>?^_~+-".contains(&ch) {
+            if self.is_symbol(ch) {
                 token.push(ch as char);
                 self.next();
             } else {
                 break;
             }
         }
-        return Ok(interp.lookup(&token))
+        return Ok(interp.lookup(&token));
     }
 
     fn parse_symbol(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
-        return self.parse_symbol_with_lead(interp, None)
+        return self.parse_symbol_with_lead(interp, None);
     }
 
     fn parse_hash_number(&mut self, interp: &Interp, radix: u32) -> Result<Handle, SchemeError> {
@@ -165,7 +193,7 @@ impl<R: Read> Parser<R> {
         }
         match i64::from_str_radix(&token, radix) {
             Ok(num) => Ok(interp.handle(Value::Number(Number::Int(num)))),
-            Err(_) => self.syntax_error(format!("Invalid '#xx' number {token}."))
+            Err(_) => self.syntax_error(format!("Invalid '#xx' number {token}.")),
         }
     }
 
@@ -176,6 +204,10 @@ impl<R: Read> Parser<R> {
             if ch.is_ascii_alphabetic() {
                 self.next();
                 token.push(ch);
+            } else if ch == ' ' && token.is_empty() {
+                self.next();
+                token.push(ch);
+                break;
             } else {
                 break;
             }
@@ -189,7 +221,7 @@ impl<R: Read> Parser<R> {
                 "tab" => Ok(interp.handle(Value::Char(9))),
                 "newline" => Ok(interp.handle(Value::Char(10))),
                 "return" => Ok(interp.handle(Value::Char(13))),
-                _ => self.syntax_error(format!("Invalid #\\ token {}.", token))
+                _ => self.syntax_error(format!("Invalid #\\ token \"{}\".", token)),
             }
         }
     }
@@ -205,12 +237,10 @@ impl<R: Read> Parser<R> {
             Some(ch) if ch == b'd' => self.parse_hash_number(interp, 10),
             Some(ch) if ch == b'x' => self.parse_hash_number(interp, 16),
             Some(ch) if ch == b'\\' => self.parse_hash_character(interp),
-            Some(ch) => self.syntax_error(format!(
-                "Invalid char in # sequence {}", ch as char
-            )),
+            Some(ch) => self.syntax_error(format!("Invalid char in # sequence {}", ch as char)),
             None => self.syntax_error(format!(
                 "Unexpected end of file while parsing a # expression."
-            ))
+            )),
         }
     }
 
@@ -223,18 +253,20 @@ impl<R: Read> Parser<R> {
                 return Ok(interp.alloc_string(token));
             } else if ch == b'\\' {
                 match self.next() {
+                    Some(ch) if ch == b'n' => token.push('\n'),
+                    Some(ch) if ch == b'r' => token.push('\r'),
+                    Some(ch) if ch == b't' => token.push('\t'),
                     Some(ch) => token.push(ch as char),
-                    None => return self.syntax_error(format!(
-                        "Unexpected enf of file while parsing string."                    
-                    ))
+                    None => {
+                        return self
+                            .syntax_error(format!("Unexpected enf of file while parsing string."));
+                    }
                 }
             } else {
                 token.push(ch as char);
             }
         }
-        self.syntax_error(format!(
-            "Unexpected end of file while parsing string."
-        ))
+        self.syntax_error(format!("Unexpected end of file while parsing string."))
     }
 
     fn parse_list(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
@@ -245,33 +277,40 @@ impl<R: Read> Parser<R> {
                 b')' => {
                     self.check_for(b')')?;
                     return Ok(interp.alloc_list_from_handles(&items));
-                },
+                }
                 b'.' => {
                     self.next();
-                    let cdr = self.read(interp)?;
-                    self.skip_whitespace();
-                    self.check_for(b')')?;
-                    let car = interp.alloc_list_from_handles(&items);
-                    let tail = interp.last(car.value())?;
-                    interp.setcdr(interp.to_object(tail)?, cdr.value())?;
-                    return Ok(car);
-                },
+                    if let Some(lead) = self.peek()
+                        && self.is_symbol(lead)
+                    {
+                        let symbol = self.parse_symbol_with_lead(interp, Some(b'.'))?;
+                        items.push(symbol);
+                    } else {
+                        let cdr = self.read(interp)?;
+                        self.skip_whitespace();
+                        self.check_for(b')')?;
+                        let car = interp.alloc_list_from_handles(&items);
+                        let tail = interp.last(car.value())?;
+                        interp.setcdr(interp.to_object(tail)?, cdr.value())?;
+                        return Ok(car);
+                    }
+                }
                 _ => {
                     items.push(self.read(interp)?);
                     self.skip_whitespace();
                 }
             }
         }
-        self.syntax_error(format!(
-            "Unexpected end of file while parsing list."
-        ))
+        self.syntax_error(format!("Unexpected end of file while parsing list."))
     }
 
     fn parse_vector(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
         let mut list = Vec::new();
         self.skip_whitespace();
         while let Some(c) = self.peek() {
-            if c == b')' { break; }
+            if c == b')' {
+                break;
+            }
             list.push(self.read(interp)?);
             self.skip_whitespace();
         }
@@ -286,53 +325,47 @@ impl<R: Read> Parser<R> {
             Some(b'(') => {
                 self.next(); // consume '('
                 self.parse_list(interp)
-            },
+            }
             Some(ch) if ch == b'+' || ch == b'-' => {
                 self.next();
                 match self.peek() {
                     Some(next) if next.is_ascii_digit() => {
-                        self.parse_number_with_sign(interp, Some(ch) )
-                    } ,
-                    _ => self.parse_symbol_with_lead(interp, Some(ch))
+                        self.parse_number_with_sign(interp, Some(ch))
+                    }
+                    _ => self.parse_symbol_with_lead(interp, Some(ch)),
                 }
-            },
+            }
             Some(ch) if ch.is_ascii_digit() || ch == b'-' || ch == b'+' => {
                 self.parse_number(interp)
-            },
-            Some(ch) if self.is_symbol(ch) => {
-                self.parse_symbol(interp)
-            },
-            Some(ch) if ch == b'#' => {
-                self.parse_hash(interp)
-            },
-            Some(b'"') => {
-                return self.parse_string(interp)
-            },
+            }
+            Some(ch) if self.is_symbol(ch) => self.parse_symbol(interp),
+            Some(ch) if ch == b'#' => self.parse_hash(interp),
+            Some(b'"') => return self.parse_string(interp),
             Some(ch) if ch == b'`' => {
                 self.next();
                 let value = self.read(interp)?;
-                interp.quasiquote( value)
-            },
+                interp.quasiquote(value)
+            }
             Some(ch) if ch == b',' => {
                 self.next();
                 let retval = match self.peek() {
                     Some(b'@') => {
                         self.next();
                         interp.unquote_splicing(self.read(interp)?)
-                    },
-                    _ => interp.unquote(self.read(interp)?)
+                    }
+                    _ => interp.unquote(self.read(interp)?),
                 };
                 self.skip_whitespace();
                 retval
-            },
+            }
             Some(ch) if ch == b'\'' => {
                 self.next();
                 interp.quote_from_handle(self.read(interp)?)
-            },
+            }
             Some(ch) => {
                 self.next();
                 self.syntax_error(format!("Unexpected character {}", ch as char))
-            },
+            }
             None => Ok(interp.handle(Value::Eof)),
         };
     }
@@ -341,12 +374,12 @@ impl<R: Read> Parser<R> {
 impl Parser<std::fs::File> {
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, SchemeError> {
         let path = path.as_ref();
-        let file = std::fs::File::open(path)
-            .map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
+        let file =
+            std::fs::File::open(path).map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
         Ok(Self {
             path: Some(path.to_path_buf()),
             lineno: 1,
-            reader: BufReader::new(file).bytes().peekable()
+            reader: BufReader::new(file).bytes().peekable(),
         })
     }
 }
@@ -362,12 +395,12 @@ mod tests {
         let expected = vec![
             Value::Number(Number::Int(42)),
             Value::Number(Number::Int(-3)),
-            Value::Number(Number::Int(0)),              
+            Value::Number(Number::Int(0)),
             Value::Number(Number::Float(3.14)),
             Value::Number(Number::Float(-0.001)),
             Value::Number(Number::Float(2e10)),
             Value::Number(Number::Float(-1.5e-3)),
-        ];  
+        ];
         for (input, expect) in inputs.iter().zip(expected.iter()) {
             let mut parser = Parser::new(input.as_bytes());
             let result = parser.parse_number(&interp).unwrap();
@@ -396,44 +429,45 @@ mod tests {
         let interp = Interp::new();
         for (text, value) in ok_inputs {
             let mut parser = Parser::new(text.as_bytes());
-            assert_eq!(value, parser.parse_hash(&interp).expect("valid input").value())
+            assert_eq!(
+                value,
+                parser.parse_hash(&interp).expect("valid input").value()
+            )
         }
     }
 
     #[test]
     fn test_parse_symbol() {
         let interp = Interp::new();
-        let inputs = vec![
-            "some-symbol",
-        ];
+        let inputs = vec!["some-symbol"];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
             let result = parser.parse_symbol(&interp);
-            assert!(matches!(result.expect("valid symbol").value(), Value::Object(_id)));
+            assert!(matches!(
+                result.expect("valid symbol").value(),
+                Value::Object(_id)
+            ));
         }
     }
 
     #[test]
     fn test_parse_string() {
         let interp = Interp::new();
-        let inputs = vec![
-            "\"Hello World\"",
-        ];
+        let inputs = vec!["\"Hello World\""];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
             let result = parser.parse_string(&interp);
-            assert!(matches!(result.expect("valid string").value(), Value::Object(_id)));
+            assert!(matches!(
+                result.expect("valid string").value(),
+                Value::Object(_id)
+            ));
         }
     }
 
     #[test]
     fn test_parse_list() {
         let interp = Interp::new();
-        let inputs = vec![
-            "1 . 2)",
-            ")",
-            "1 2 3)"
-        ];
+        let inputs = vec!["1 . 2)", ")", "1 2 3)"];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
             let result = parser.parse_list(&interp);

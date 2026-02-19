@@ -80,6 +80,15 @@ fn primitive_length(
     EvalResult::done(Value::Number(Number::Int(length)))
 }
 
+fn primitive_pair_p(
+    interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 1);
+    EvalResult::done(Value::Boolean(interp.is_list(args[0])))
+}
+
 fn primitive_list_p(
     interp: &Interp,
     _env: Rc<RefCell<Env>>,
@@ -133,6 +142,7 @@ pub fn register(interp: &Interp) {
     interp.define_primitive("list", primitive_list);
     interp.define_primitive("append", primitive_append);
     interp.define_primitive("length", primitive_length);
+    interp.define_primitive("pair?", primitive_pair_p);
     interp.define_primitive("list?", primitive_list_p);
     interp.define_primitive("null?", primitive_null_p);
     interp.define_primitive("cons", primitive_list_cons);

@@ -89,9 +89,9 @@ impl Interp {
 
     fn init_scheme(&self) {
         let text = include_str!("scheme/macros.scm");
-        let mut parser = Parser::new(text.as_bytes());
-        if self.load_from_parser(&mut parser).is_err() {
-            panic!("Failed to load ini code from scheme/macros.scm")
+        let mut parser = Parser::new_with_name("macros.scm".into(), text.as_bytes());
+        if let Err(e) = self.load_from_parser(&mut parser) {
+            panic!("Init from scheme/macros.scm failed: {}", e);
         }
     }
 
