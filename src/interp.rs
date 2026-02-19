@@ -47,7 +47,7 @@ impl Interp {
             parent: None,
         };
         let env_handle = Rc::new(RefCell::new(global_env));
-        let heap_handle = RefCell::new(heap::Heap::new(4096));
+        let heap_handle = RefCell::new(heap::Heap::new(8192));
         let (append, list, quasiquote, unquote, unquote_splicing) = {
             let mut heap = heap_handle.borrow_mut();
             (
@@ -735,7 +735,8 @@ impl Interp {
                     Ok(acc)
                 });
                 if updated {
-                    Ok(self.alloc_list_from_handles(&items?))
+                    let expansion = self.alloc_list_from_handles(&items?);
+                    Ok(expansion)
                 } else {
                     Ok(self.handle(expr))
                 }

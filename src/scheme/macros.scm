@@ -6,6 +6,8 @@
 (define! cddr (lambda (l) (cdr (cdr l))))
 (define! caar (lambda (l) (car (car l))))
 (define! cdar (lambda (l) (cdr (car l))))
+(define! cadar (lambda (l) (car (cdr (car l)))))
+(define! caddar (lambda (l) (car (cdr (cdr (car l))))))
 
 (define-syntax define 
     (lambda (name_and_params . body) 
@@ -67,18 +69,31 @@
     )
 )
 
+(define-syntax and
+    (lambda exprs
+        (if (null? exprs)
+            #t
+            `(let ((first ,(car exprs)))
+                (if (not first) first (and ,@(cdr exprs))))
+        )
+    )
+)
+
 (define-syntax catch
     (lambda (handler . body)
         `(with-exception-handler ,handler (lambda () ,@body)))
 )
 
-(define-syntax cond 
+(define-syntax cond
     (lambda clauses
         (if (null? clauses)
             () 
-            `(if ,(caar clauses) 
-                (begin ,@(cdar clauses))
-                (cond ,@(cdr clauses))))
+            (if (eq? '=> (cadar clauses)) 
+                `((lambda (_test _proc) 
+                    (if _test (_proc _test) (cond4 ,@(cdr clauses)))) ,(caar clauses) ,(caddar clauses))
+                `(if ,(if (eq? (caar clauses) 'else) #t (caar clauses))
+                    (begin ,@(cdar clauses))
+                    (cond ,@(cdr clauses)))))
     )
 )
 
@@ -116,6 +131,40 @@
 (define! display debug)
 (define! write debug)
 
-(define (boolean? stuff) (or (= stuff #t) (= stuff #f)))
+(define (boolean? stuff) (or (eq? stuff #t) (eq? stuff #f)))
 
 (define! for-each map)
+
+(define (not x) (eq? #f x))
+
+(define (assv obj alist) 
+    (let loop ((lst alist))
+        (if (null? lst) #f
+            (if (eq? obj (caar lst))
+                (car lst)
+                (loop (cdr lst))))
+    )
+)
+
+(define (memq obj lst)
+    (if (null? lst)
+        #f
+        (if (eq? obj (car lst))
+            lst
+            (memq obj (cdr lst))))
+)
+
+(define-syntax case 
+    (lambda (expr . clauses)
+        (if (null? clauses) 
+            #f
+            `((lambda (value_)            
+                (if (eq? 'else (quote ,(caar clauses)))
+                    (begin ,@(cdar clauses))
+                    (if (memq value_ (quote ,(caar clauses))) 
+                        (begin ,@(cdar clauses))
+                        (case value_ ,@(cdr clauses)))))
+             ,expr))
+    )
+)
+
