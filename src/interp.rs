@@ -27,6 +27,8 @@ pub struct Interp {
     quasiquote: Value,
     unquote: Value,
     unquote_splicing: Value,
+    apply: Value,
+    vector: Value,
 }
 
 struct PortGuard<'a> {
@@ -68,7 +70,7 @@ impl Interp {
         };
         let env_handle = Rc::new(RefCell::new(global_env));
         let heap_handle = RefCell::new(heap::Heap::new(8192));
-        let (append, list, quasiquote, unquote, unquote_splicing) = {
+        let (append, list, quasiquote, unquote, unquote_splicing, apply, vector) = {
             let mut heap = heap_handle.borrow_mut();
             (
                 heap.raw_intern_symbol("append"),
@@ -76,6 +78,8 @@ impl Interp {
                 heap.raw_intern_symbol("quasiquote"),
                 heap.raw_intern_symbol("unquote"),
                 heap.raw_intern_symbol("unquote-splicing"),
+                heap.raw_intern_symbol("apply"),
+                heap.raw_intern_symbol("vector"),
             )
         };
         let interp = Self {
@@ -90,6 +94,8 @@ impl Interp {
             quasiquote: quasiquote.expect("quasiquote symbol").value(),
             unquote: unquote.expect("unquote symbol").value(),
             unquote_splicing: unquote_splicing.expect("unquote-splicing symbol").value(),
+            apply: apply.expect("apply symbol").value(),
+            vector: vector.expect("vector symbol").value(),
         };
         interp.init();
         interp
@@ -149,6 +155,10 @@ impl Interp {
 
     pub fn alloc_pair(&self, car: Value, cdr: Value) -> Handle {
         self.alloc_with_retry(|heap| heap.raw_alloc_pair(car, cdr))
+    }
+
+    pub fn alloc_pair_from_handles(&self, car: Handle, cdr: Handle) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_pair(car.value(), cdr.value()))
     }
 
     pub fn alloc_list(&self, items: &[Value]) -> Handle {
@@ -439,6 +449,16 @@ impl Interp {
         }
     }
 
+    pub fn to_number(&self, value: Value) -> Result<Number, SchemeError> {
+        match value {
+            Value::Number(number) => Ok(number),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected a Number, got a {}",
+                value.type_name()
+            ))),
+        }
+    }
+
     pub fn is_char(&self, value: Value) -> Option<u8> {
         match value {
             Value::Char(ch) => Some(ch),
@@ -716,7 +736,10 @@ impl Interp {
                         let mut args = vec![self.handle(self.append)];
                         loop {
                             if let Some((car, cdr)) = self.is_pair(p) {
-                                if let Some(spliced) = self.is_splicing(car)? {
+                                if car == self.unquote {
+                                    args.push(self.handle(self.to_car(cdr)?));
+                                    return Ok(self.alloc_list_from_handles(&args));
+                                } else if let Some(spliced) = self.is_splicing(car)? {
                                     args.push(self.handle(spliced))
                                 } else {
                                     args.push(self.list_from_handle(self.expand_quasiquote(car)?)?);
@@ -725,9 +748,24 @@ impl Interp {
                             } else if p == Value::Nil {
                                 return Ok(self.alloc_list_from_handles(&args));
                             } else {
-                                return Ok(self.alloc_list_with_cdr_from_handles(&args, p));
+                                args.push(self.expand_quasiquote(p)?);
+                                return Ok(self.alloc_list_from_handles(&args));
                             }
                         }
+                    }
+                    HeapObject::Vector(vector) => {
+                        let data = vector.data.borrow();
+                        let mut items = vec![self.handle(self.append)];
+                        for item in data.iter() {
+                            if let Some(spliced) = self.is_splicing(*item)? {
+                                items.push(self.handle(spliced));
+                            } else {
+                                items.push(self.list_from_handle(self.expand_quasiquote(*item)?)?);
+                            }
+                        }
+                        let items = self.alloc_list_from_handles(&items);
+                        let apply = self.alloc_list(&[self.apply, self.vector, items.value()]);
+                        Ok(apply)
                     }
                     _ => self.quote(expr),
                 }

@@ -14,7 +14,8 @@ fn eval_expr(interp: &Interp, expr: Value) {
         })
         .map(|value| {
             interp.flush_stdout();
-            println!(" = {}", interp.display(value))})
+            println!(" = {}", interp.display(value))
+        })
         .unwrap_or_else(|e| eprintln!("{}", e));
 }
 

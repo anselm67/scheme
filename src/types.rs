@@ -187,6 +187,14 @@ impl std::ops::Rem for Number {
     }
 }
 
+impl Number {
+    pub fn sqrt(&self) -> Number {
+        match self {
+            Number::Int(n) => Number::Float((*n as f64).sqrt()),
+            Number::Float(f) => Number::Float(f.sqrt()),
+        }
+    }
+}
 impl PartialOrd for Number {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {

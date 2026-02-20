@@ -1,42 +1,53 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    env::Env, 
-    interp::{ Interp }, 
-    types::{Value, Number, EvalResult, SchemeError},
+    env::Env,
+    interp::Interp,
+    types::{EvalResult, Number, SchemeError, Value},
 };
 
-fn primitive_add(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_add(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
-    let sum = nums.into_iter()
-        .fold(Number::Int(0), |acc, n| acc  + n);
+    let sum = nums.into_iter().fold(Number::Int(0), |acc, n| acc + n);
     EvalResult::done(Value::Number(sum))
 }
 
-fn primitive_sub(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_sub(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
-            "- expects at least one arg.".to_string()
-        ))
+            "- expects at least one arg.".to_string(),
+        ));
     }
 
     let mut iter = nums.into_iter();
     let init = iter.next().unwrap();
     let sub = if let None = iter.clone().next() {
-        - init
+        -init
     } else {
         iter.fold(init, |acc, n| acc - n)
     };
     EvalResult::done(Value::Number(sub))
 }
 
-fn primitive_div(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_div(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
-            "- expects at least one arg.".to_string()
-        ))
+            "- expects at least one arg.".to_string(),
+        ));
     }
 
     let mut iter = nums.into_iter();
@@ -49,81 +60,142 @@ fn primitive_div(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Re
     EvalResult::done(Value::Number(div))
 }
 
-
-fn primitive_mul(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_mul(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
-    let mul = nums.into_iter()
-        .fold(Number::Int(1), |acc, n| acc * n);
+    let mul = nums.into_iter().fold(Number::Int(1), |acc, n| acc * n);
     EvalResult::done(Value::Number(mul))
 }
 
-fn primitive_rem(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_rem(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
     EvalResult::done(Value::Number(*a % *b))
 }
 
-fn primitive_number_eq(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_number_eq(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
     EvalResult::done(Value::Boolean(a == b))
 }
 
-fn primitive_number_lt(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_number_lt(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
     EvalResult::done(Value::Boolean(a < b))
 }
 
-fn primitive_number_lte(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_number_lte(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
     EvalResult::done(Value::Boolean(a <= b))
 }
 
-fn primitive_number_gt(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_number_gt(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
     EvalResult::done(Value::Boolean(a > b))
 }
 
-fn primitive_number_gte(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_number_gte(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
     EvalResult::done(Value::Boolean(a >= b))
 }
 
-fn primitive_number_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_number_p(
+    interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     EvalResult::done(Value::Boolean(interp.is_number(args[0]).is_some()))
 }
 
-fn primitive_integer_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_integer_p(
+    interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     EvalResult::done(Value::Boolean(interp.is_integer(args[0]).is_some()))
 }
 
-fn primitive_float_p(interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_float_p(
+    interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     EvalResult::done(Value::Boolean(interp.is_float(args[0]).is_some()))
 }
 
-fn primitive_number_max(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_number_max(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
-            "max expects at least one arg.".to_string()));
+            "max expects at least one arg.".to_string(),
+        ));
     }
     let init = nums[0];
-    let ret = nums.into_iter()
+    let ret = nums
+        .into_iter()
         .fold(init, |a, b| if a > b { a } else { b });
     EvalResult::done(Value::Number(ret))
 }
 
-fn primitive_number_min(_interp: &Interp, _env: Rc<RefCell<Env>>, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_number_min(
+    _interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
-            "min expects at least one arg.".to_string()));
+            "min expects at least one arg.".to_string(),
+        ));
     }
     let init = nums[0];
-    let ret = nums.into_iter()
+    let ret = nums
+        .into_iter()
         .fold(init, |a, b| if a < b { a } else { b });
     EvalResult::done(Value::Number(ret))
+}
+
+fn primitive_sqt(
+    interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 1);
+    let value = interp.to_number(args[0])?;
+
+    EvalResult::done(Value::Number(value.sqrt()))
 }
 
 pub fn register(interp: &Interp) {
@@ -142,4 +214,5 @@ pub fn register(interp: &Interp) {
     interp.define_primitive(">=", primitive_number_gte);
     interp.define_primitive("max", primitive_number_max);
     interp.define_primitive("min", primitive_number_min);
+    interp.define_primitive("sqt", primitive_sqt);
 }
