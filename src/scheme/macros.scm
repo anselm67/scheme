@@ -7,6 +7,8 @@
 (define! caar (lambda (l) (car (car l))))
 (define! cdar (lambda (l) (cdr (car l))))
 (define! cadar (lambda (l) (car (cdr (car l)))))
+(define! caddr (lambda (l) (car (cdr (cdr l)))))
+(define! cddar (lambda (l) (cdr (cdr (car l)))))
 (define! caddar (lambda (l) (car (cdr (cdr (car l))))))
 
 (define-syntax define 
@@ -183,3 +185,15 @@
 )
 
 (define (zero? num) (= num 0))
+
+(define-syntax do  
+    (lambda (var-init-steps test-expr . body)
+        `(let loop 
+            ,(map (lambda (vis) (list (car vis) (cadr vis))) var-init-steps) 
+            (if ,(car test-expr)
+                ,(cadr test-expr)
+                (begin ,@body (loop ,@(map (lambda (vis) (if (null? (cddr vis)) (car vis) (caddr vis))) var-init-steps))))
+        )
+    )
+)
+

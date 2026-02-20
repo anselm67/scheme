@@ -25,5 +25,3 @@
 (define (gc-death) 
     (let loop () (begin (load "src/scheme/macros.scm") (heap-stats) (loop)))
 )
-
-
