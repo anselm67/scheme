@@ -181,3 +181,5 @@
             )
     )
 )
+
+(define (zero? num) (= num 0))
