@@ -1,12 +1,9 @@
-
-(load "src/scheme/macros.scm")
-
 ;; This is a bit contrieved because of the newline, sorry (!)
-(assert-equal (string-append "\"hello\"" (make-string 1 #\newline))
+(assert-equal "hello\n"
     (let ((port (open-output-string)))
         (with-output-port
             port 
-            (lambda () (debug "hello") (get-output-string))))
+            (lambda () (display "hello\n") (get-output-string))))
 )
 
 (assert-fails (let ((port (open-output-string)))

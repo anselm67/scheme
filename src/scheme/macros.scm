@@ -101,11 +101,12 @@
                 `(let ((_test ,(caar clauses))
                        (_proc ,(caddar clauses)))
                     (if _test (_proc _test) (cond ,@(cdr clauses))))
-                `(let ((_test ,(caar clauses))
-                       (_body ,(cdar clauses)))
-                    (if ,(if (eq? _test 'else) #t _test)
-                        (begin ,@_body)
-                        (cond ,@(cdr clauses))))))
+                (if (eq? 'else (caar clauses))
+                    `(begin ,@(cdar clauses))
+                    `(let ((test_ ,(caar clauses)))
+                        (if test_
+                            (begin ,@(cdar clauses))
+                            (cond ,@(cdr clauses)))))))
     )
 )
 
@@ -116,7 +117,10 @@
 (define-syntax assert-fails
     (lambda (expr) 
         `(assert-equal 'test-failed 
-            (catch (lambda (err) 'test-failed) ,expr)
+            (catch (lambda (err) 'test-fail(let ((port (open-output-string)))
+        (with-output-port
+            port 
+            (lambda () (write "hello\n") (get-output-string))))ed) ,expr)
         ))
 )
 
@@ -139,9 +143,7 @@
 )
  
  ; TODO Proper definition of write and display.
-(define (newline) (debug "\n"))
-(define! display debug)
-(define! write debug)
+(define (newline) (display "\n"))
 
 (define (boolean? stuff) (or (eq? stuff #t) (eq? stuff #f)))
 

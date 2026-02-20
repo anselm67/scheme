@@ -286,7 +286,7 @@ impl<R: Read> Parser<R> {
                         let symbol = self.parse_symbol_with_lead(interp, Some(b'.'))?;
                         items.push(symbol);
                     } else {
-                        let cdr = self.read(interp)?;
+                        let cdr = self.do_read(interp)?;
                         self.skip_whitespace();
                         self.check_for(b')')?;
                         let car = interp.alloc_list_from_handles(&items);
@@ -296,7 +296,7 @@ impl<R: Read> Parser<R> {
                     }
                 }
                 _ => {
-                    items.push(self.read(interp)?);
+                    items.push(self.do_read(interp)?);
                     self.skip_whitespace();
                 }
             }
@@ -311,14 +311,14 @@ impl<R: Read> Parser<R> {
             if c == b')' {
                 break;
             }
-            list.push(self.read(interp)?);
+            list.push(self.do_read(interp)?);
             self.skip_whitespace();
         }
         self.check_for(b')')?;
         return Ok(interp.alloc_vector_from_handles(&list));
     }
 
-    pub fn read(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    fn do_read(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
         self.skip_whitespace();
         let current = self.peek();
         return match current {
@@ -343,7 +343,7 @@ impl<R: Read> Parser<R> {
             Some(b'"') => return self.parse_string(interp),
             Some(ch) if ch == b'`' => {
                 self.next();
-                let value = self.read(interp)?;
+                let value = self.do_read(interp)?;
                 interp.quasiquote(value)
             }
             Some(ch) if ch == b',' => {
@@ -351,16 +351,16 @@ impl<R: Read> Parser<R> {
                 let retval = match self.peek() {
                     Some(b'@') => {
                         self.next();
-                        interp.unquote_splicing(self.read(interp)?)
+                        interp.unquote_splicing(self.do_read(interp)?)
                     }
-                    _ => interp.unquote(self.read(interp)?),
+                    _ => interp.unquote(self.do_read(interp)?),
                 };
                 self.skip_whitespace();
                 retval
             }
             Some(ch) if ch == b'\'' => {
                 self.next();
-                interp.quote_from_handle(self.read(interp)?)
+                interp.quote_from_handle(self.do_read(interp)?)
             }
             Some(ch) => {
                 self.next();
@@ -368,6 +368,11 @@ impl<R: Read> Parser<R> {
             }
             None => Ok(interp.handle(Value::Eof)),
         };
+    }
+
+    pub fn read(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+        // dbg!(self.lineno);
+        self.do_read(interp)
     }
 }
 

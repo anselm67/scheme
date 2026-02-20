@@ -1,7 +1,5 @@
 ;; Some scheme tests.
 
-(load "src/scheme/macros.scm")
-
 ;; Testing some predicates.
 (assert-equal #t (procedure? +))
 (assert-equal #f (procedure? 1))

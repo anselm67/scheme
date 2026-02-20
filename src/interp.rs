@@ -9,7 +9,7 @@ use crate::heap::{self, Handle, Heap, PrimitiveFn};
 use crate::heap::{Apply, Closure, HeapObject, Keyword, OutputPort, Vector};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
-use crate::types::{DisplayWrapper, EvalResult, GcId, Number, SchemeError, SchemeObject, Value};
+use crate::types::{EvalResult, GcId, Number, SchemeError, SchemeObject, Value};
 
 pub struct Interp {
     pub heap: RefCell<heap::Heap>,
@@ -36,6 +36,26 @@ struct PortGuard<'a> {
 impl<'a> Drop for PortGuard<'a> {
     fn drop(&mut self) {
         self.stack.borrow_mut().pop();
+    }
+}
+
+enum OutputWrapperKind {
+    ForWrite,
+    ForDisplay,
+}
+
+struct OutputWrapper<'a> {
+    kind: OutputWrapperKind,
+    obj: &'a Value,
+    interp: &'a Interp,
+}
+
+impl<'a> std::fmt::Display for OutputWrapper<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.kind {
+            OutputWrapperKind::ForDisplay => self.obj.display(self.interp, f),
+            OutputWrapperKind::ForWrite => self.obj.write(self.interp, f),
+        }
     }
 }
 
@@ -85,6 +105,18 @@ impl Interp {
         let boxed_writer: Box<dyn Write> = Box::new(BufWriter::new(std::io::stdout()));
         let output_port = self.alloc_output_port(Rc::new(RefCell::new(Some(boxed_writer))));
         self.output_stack.borrow_mut().push(output_port.value())
+    }
+
+    pub fn flush_stdout(&self) {
+        let stack = self.output_stack.borrow();
+        let port_value = *stack.first().expect("Output stack should never be empty!");
+        let output = self
+            .to_output_port(port_value)
+            .expect("stdout should be a valid output port.");
+        let mut guard = output.port.borrow_mut();
+        if let Some(writer) = guard.as_deref_mut() {
+            let _ = writer.flush();
+        }
     }
 
     fn init_scheme(&self) {
@@ -341,7 +373,17 @@ impl Interp {
     }
 
     pub fn display(&self, obj: Value) -> String {
-        let wrapper = DisplayWrapper {
+        let wrapper = OutputWrapper {
+            kind: OutputWrapperKind::ForDisplay,
+            obj: &obj,
+            interp: self,
+        };
+        wrapper.to_string()
+    }
+
+    pub fn write(&self, obj: Value) -> String {
+        let wrapper = OutputWrapper {
+            kind: OutputWrapperKind::ForWrite,
             obj: &obj,
             interp: self,
         };

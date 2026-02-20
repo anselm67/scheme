@@ -1,7 +1,5 @@
 ;; Tests for the string primitives.
 
-(load "src/scheme/macros.scm")
-
 (assert-equal #t (string? "hello"))
 (assert-equal #f (string? 1))
 

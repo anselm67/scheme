@@ -261,6 +261,39 @@ fn primitive_read(
     }
 }
 
+fn primitive_output<F>(interp: &Interp, args: &[Value], func: F) -> Result<EvalResult, SchemeError>
+where
+    F: FnOnce(Value) -> String,
+{
+    check_arity_range!(args, 1, 2);
+    let obj = args[0];
+    let mut output = interp.get_output_port()?;
+    if args.len() == 2 {
+        output = interp.to_output_port(args[1])?;
+    }
+    if let Some(ref mut port) = *output.port.borrow_mut() {
+        write!(port, "{}", func(obj))?;
+        port.flush()?;
+    }
+    EvalResult::done(Value::Boolean(true))
+}
+
+fn primitive_display(
+    interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    primitive_output(interp, args, |obj| interp.display(obj))
+}
+
+fn primitive_write(
+    interp: &Interp,
+    _env: Rc<RefCell<Env>>,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    primitive_output(interp, args, |obj| interp.write(obj))
+}
+
 pub fn register(interp: &Interp) {
     interp.define_primitive("open-input-file", primitive_open_input_file);
     interp.define_primitive("open-input-string", primitive_open_input_string);
@@ -278,4 +311,6 @@ pub fn register(interp: &Interp) {
     interp.define_primitive("with-input-port", primitive_with_input_port);
     interp.define_primitive("current-output-port", primitive_current_output_port);
     interp.define_primitive("current-input-port", primitive_current_input_port);
+    interp.define_primitive("write", primitive_write);
+    interp.define_primitive("display", primitive_display);
 }

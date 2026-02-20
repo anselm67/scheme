@@ -69,7 +69,8 @@ impl EvalResult {
 pub trait SchemeObject {
     fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError>;
     fn is_false(&self) -> bool;
-    fn write_to(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+    fn display(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+    fn write(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result;
     fn mark(&self, interp: &Interp, marks: &mut MarkSet);
 }
 
@@ -262,17 +263,6 @@ impl Value {
     }
 }
 
-pub struct DisplayWrapper<'a> {
-    pub obj: &'a Value,
-    pub interp: &'a Interp,
-}
-
-impl<'a> std::fmt::Display for DisplayWrapper<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.obj.write_to(self.interp, f)
-    }
-}
-
 impl SchemeObject for Value {
     fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError> {
         match self {
@@ -288,9 +278,9 @@ impl SchemeObject for Value {
         }
     }
 
-    fn write_to(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Object(id) => id.write_to(interp, f),
+            Value::Object(id) => id.write(interp, f),
             Value::Number(n) => write!(f, "{}", n),
             Value::Char(ch) => {
                 let ch = *ch as char;
@@ -302,6 +292,22 @@ impl SchemeObject for Value {
                     '\r' => write!(f, "#\\return"),
                     any => write!(f, "{}", any),
                 }
+            }
+            Value::Boolean(true) => write!(f, "#t"),
+            Value::Boolean(false) => write!(f, "#f"),
+            Value::Nil => write!(f, "()"),
+            Value::Unbound => write!(f, "*unbound*"),
+            Value::Eof => write!(f, "*eof*"),
+        }
+    }
+
+    fn display(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Object(id) => id.display(interp, f),
+            Value::Number(n) => write!(f, "{}", n),
+            Value::Char(ch) => {
+                let ch = *ch as char;
+                write!(f, "{}", ch)
             }
             Value::Boolean(true) => write!(f, "#t"),
             Value::Boolean(false) => write!(f, "#f"),

@@ -12,7 +12,9 @@ fn eval_expr(interp: &Interp, expr: Value) {
             let env = interp.env.clone();
             interp.eval(env, expanded.value())
         })
-        .map(|value| println!(" = {}", interp.display(value)))
+        .map(|value| {
+            interp.flush_stdout();
+            println!(" = {}", interp.display(value))})
         .unwrap_or_else(|e| eprintln!("{}", e));
 }
 

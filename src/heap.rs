@@ -749,7 +749,7 @@ impl SchemeObject for GcId {
         return *self == Keyword::False as usize;
     }
 
-    fn write_to(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let id = *self;
         let heap = interp.heap.borrow();
         let obj = heap.get(id);
@@ -757,17 +757,17 @@ impl SchemeObject for GcId {
             HeapObject::Pair(car, cdr) => {
                 let mut p = cdr.clone();
                 write!(f, "(")?;
-                car.write_to(interp, f)?;
+                car.write(interp, f)?;
                 loop {
                     if let Some((cadr, cddr)) = interp.is_pair(p) {
                         write!(f, " ")?;
-                        cadr.write_to(interp, f)?;
+                        cadr.write(interp, f)?;
                         p = cddr;
                     } else if interp.is_nil(p) {
                         break;
                     } else {
                         write!(f, " . ")?;
-                        p.write_to(interp, f)?;
+                        p.write(interp, f)?;
                         break;
                     }
                 }
@@ -780,12 +780,67 @@ impl SchemeObject for GcId {
                     if i > 0 {
                         write!(f, " ")?; // Add a space before every element EXCEPT the first
                     }
-                    e.write_to(interp, f)?;
+                    e.write(interp, f)?;
                 }
                 write!(f, ")")
             }
             HeapObject::Symbol(s) => write!(f, "{}", s),
-            HeapObject::String(s) => write!(f, "\"{}\"", s),
+            HeapObject::String(s) => {
+                write!(f, "{}", "\"")?;
+                s.chars().try_fold((), |_, ch| match ch {
+                    '\n' => write!(f, "\\n"),
+                    '\t' => write!(f, "\\t"),
+                    '\r' => write!(f, "\\r"),
+                    _ => write!(f, "{}", ch),
+                })?;
+                write!(f, "{}", "\"")
+            }
+            HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
+            HeapObject::Closure(_) => write!(f, "<closure {}>", id),
+            HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
+            HeapObject::InputPort(_) => write!(f, "<input-port {}>", id),
+            HeapObject::OutputPort(_) => write!(f, "<output-port {}>", id),
+            HeapObject::FreeSlot(id) => panic!("Attempt to render free slot {}", id),
+        }
+    }
+
+    fn display(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let id = *self;
+        let heap = interp.heap.borrow();
+        let obj = heap.get(id);
+        match obj {
+            HeapObject::Pair(car, cdr) => {
+                let mut p = cdr.clone();
+                write!(f, "(")?;
+                car.display(interp, f)?;
+                loop {
+                    if let Some((cadr, cddr)) = interp.is_pair(p) {
+                        write!(f, " ")?;
+                        cadr.display(interp, f)?;
+                        p = cddr;
+                    } else if interp.is_nil(p) {
+                        break;
+                    } else {
+                        write!(f, " . ")?;
+                        p.display(interp, f)?;
+                        break;
+                    }
+                }
+                write!(f, ")")
+            }
+            HeapObject::Vector(v) => {
+                let items = v.data.borrow();
+                write!(f, "#(")?;
+                for (i, e) in items.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?; // Add a space before every element EXCEPT the first
+                    }
+                    e.display(interp, f)?;
+                }
+                write!(f, ")")
+            }
+            HeapObject::Symbol(s) => write!(f, "{}", s),
+            HeapObject::String(s) => write!(f, "{}", s),
             HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
