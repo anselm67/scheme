@@ -185,6 +185,9 @@
 )
 
 (define (zero? num) (= num 0))
+(define (negative? num) (< num 0))
+(define (positive? num) (> num 0))
+(define (abs num) (if (negative? num) (- num) num))
 
 (define-syntax do  
     (lambda (var-init-steps test-expr . body)
