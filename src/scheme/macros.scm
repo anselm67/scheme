@@ -52,6 +52,15 @@
             ,@body)
 ))
 
+(define-syntax let* 
+    (lambda (bindings . body) 
+        (if (null? bindings)
+            `(begin ,@body)
+            `(let ((,(caar bindings) ,(cadar bindings)))
+                (let* ,(cdr bindings) ,@body))
+        )
+    )
+)
 
 (define-syntax begin (lambda exprs `((lambda () ,@exprs))))
 
@@ -89,11 +98,14 @@
         (if (null? clauses)
             () 
             (if (eq? '=> (cadar clauses)) 
-                `((lambda (_test _proc) 
-                    (if _test (_proc _test) (cond4 ,@(cdr clauses)))) ,(caar clauses) ,(caddar clauses))
-                `(if ,(if (eq? (caar clauses) 'else) #t (caar clauses))
-                    (begin ,@(cdar clauses))
-                    (cond ,@(cdr clauses)))))
+                `(let ((_test ,(caar clauses))
+                       (_proc ,(caddar clauses)))
+                    (if _test (_proc _test) (cond ,@(cdr clauses))))
+                `(let ((_test ,(caar clauses))
+                       (_body ,(cdar clauses)))
+                    (if ,(if (eq? _test 'else) #t _test)
+                        (begin ,@_body)
+                        (cond ,@(cdr clauses))))))
     )
 )
 
@@ -154,17 +166,16 @@
             (memq obj (cdr lst))))
 )
 
-(define-syntax case 
+(define-syntax case
     (lambda (expr . clauses)
         (if (null? clauses) 
             #f
-            `((lambda (value_)            
+            `(let ((value_ ,expr))
                 (if (eq? 'else (quote ,(caar clauses)))
                     (begin ,@(cdar clauses))
                     (if (memq value_ (quote ,(caar clauses))) 
                         (begin ,@(cdar clauses))
                         (case value_ ,@(cdr clauses)))))
-             ,expr))
+            )
     )
 )
-

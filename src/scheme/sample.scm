@@ -26,15 +26,4 @@
     (let loop () (begin (load "src/scheme/macros.scm") (heap-stats) (loop)))
 )
 
-(define-syntax cond3
-    (lambda clauses
-        (if (null? clauses)
-            () 
-            (if (eq? '=> (cadar clauses)) 
-                `((lambda (_test _proc) 
-                    (if _test (_proc _test) #f)) ,(caar clauses) ,(caddar clauses))
-                `(if ,(if (eq? (caar clauses) 'else) #t (caar clauses))
-                    (begin ,@(cdar clauses))
-                    (cond3 ,@(cdr clauses)))))
-    )
-)
+
