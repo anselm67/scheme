@@ -1,6 +1,6 @@
 use std::{cell::RefCell, cmp::Ordering, convert::TryFrom, fmt, rc::Rc};
 
-use crate::{env::Env, interp::Interp, markset::MarkSet};
+use crate::{env::Env, interp::Scheme, markset::MarkSet};
 
 pub type GcId = usize;
 
@@ -67,11 +67,11 @@ impl EvalResult {
     }
 }
 pub trait SchemeObject {
-    fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError>;
+    fn eval(&self, interp: &Scheme, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError>;
     fn is_false(&self) -> bool;
-    fn display(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result;
-    fn write(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result;
-    fn mark(&self, interp: &Interp, marks: &mut MarkSet);
+    fn display(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+    fn write(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+    fn mark(&self, interp: &Scheme, marks: &mut MarkSet);
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -251,7 +251,7 @@ impl Value {
         }
     }
 
-    pub fn is_equal(&self, interp: &Interp, other: &Value) -> bool {
+    pub fn is_equal(&self, interp: &Scheme, other: &Value) -> bool {
         match (self, other) {
             (Value::Number(a), Value::Number(b)) => a == b,
             (Value::Char(a), Value::Char(b)) => a == b,
@@ -272,7 +272,7 @@ impl Value {
 }
 
 impl SchemeObject for Value {
-    fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError> {
+    fn eval(&self, interp: &Scheme, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError> {
         match self {
             Value::Object(id) => id.eval(interp, env),
             _ => Ok(EvalResult::Done(*self)),
@@ -286,7 +286,7 @@ impl SchemeObject for Value {
         }
     }
 
-    fn write(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Object(id) => id.write(interp, f),
             Value::Number(n) => write!(f, "{}", n),
@@ -309,7 +309,7 @@ impl SchemeObject for Value {
         }
     }
 
-    fn display(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn display(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Object(id) => id.display(interp, f),
             Value::Number(n) => write!(f, "{}", n),
@@ -325,7 +325,7 @@ impl SchemeObject for Value {
         }
     }
 
-    fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
+    fn mark(&self, interp: &Scheme, marks: &mut MarkSet) {
         match self {
             Value::Object(id) => id.mark(interp, marks),
             _ => (),

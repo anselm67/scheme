@@ -11,7 +11,7 @@ use crate::markset::MarkSet;
 use crate::parser::Parser;
 use crate::types::{EvalResult, GcId, Number, SchemeError, SchemeObject, Value};
 
-pub struct Interp {
+pub struct Scheme {
     pub heap: RefCell<heap::Heap>,
     pub env: Rc<RefCell<crate::env::Env>>,
 
@@ -49,7 +49,7 @@ enum OutputWrapperKind {
 struct OutputWrapper<'a> {
     kind: OutputWrapperKind,
     obj: &'a Value,
-    interp: &'a Interp,
+    interp: &'a Scheme,
 }
 
 impl<'a> std::fmt::Display for OutputWrapper<'a> {
@@ -84,7 +84,7 @@ impl SchemeOptions {
     }
 }
 
-impl Interp {
+impl Scheme {
     pub fn new(options: &SchemeOptions) -> Self {
         let global_env = crate::env::Env {
             macros: HashMap::new(),

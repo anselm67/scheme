@@ -1,11 +1,11 @@
 use crate::{
-    interp::{Interp, SchemeOptions},
+    interp::{Scheme, SchemeOptions},
     parser::Parser,
 };
 
 #[test]
 fn test_parse_some_exprs() {
-    let interp = Interp::new(&SchemeOptions::new());
+    let interp = Scheme::new(&SchemeOptions::new());
 
     let inputs = vec![
         "(* 2 3)",
@@ -22,7 +22,7 @@ fn test_parse_some_exprs() {
 
 #[test]
 fn test_parse_fails() {
-    let interp = Interp::new(&SchemeOptions::new());
+    let interp = Scheme::new(&SchemeOptions::new());
 
     let inputs = vec!["(* 2 3", "(define! x \\#a)"];
     for text in inputs {

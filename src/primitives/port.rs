@@ -7,13 +7,13 @@ use std::{
 
 use crate::{
     env::Env,
-    interp::Interp,
+    interp::Scheme,
     parser::Parser,
     types::{EvalResult, SchemeError, Value},
 };
 
 fn primitive_open_input_file(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -28,7 +28,7 @@ fn primitive_open_input_file(
 }
 
 fn primitive_open_input_string(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -41,7 +41,7 @@ fn primitive_open_input_string(
 }
 
 fn primitive_close_input_port(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -55,7 +55,7 @@ fn primitive_close_input_port(
 }
 
 fn primitive_read_char(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -80,7 +80,7 @@ fn primitive_read_char(
 }
 
 fn primitive_eof_object(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -89,7 +89,7 @@ fn primitive_eof_object(
 }
 
 fn primitive_open_output_file(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -107,7 +107,7 @@ fn primitive_open_output_file(
 }
 
 fn primitive_open_output_string(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -117,7 +117,7 @@ fn primitive_open_output_string(
 }
 
 fn primitive_get_output_string(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -138,7 +138,7 @@ fn primitive_get_output_string(
 }
 
 fn primitive_close_output_port(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -152,7 +152,7 @@ fn primitive_close_output_port(
 }
 
 fn primitive_flush_output_port(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -173,7 +173,7 @@ fn primitive_flush_output_port(
 }
 
 fn primitive_with_input_port(
-    interp: &Interp,
+    interp: &Scheme,
     env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -184,7 +184,7 @@ fn primitive_with_input_port(
 }
 
 fn primitive_with_output_port(
-    interp: &Interp,
+    interp: &Scheme,
     env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -195,7 +195,7 @@ fn primitive_with_output_port(
 }
 
 fn primitive_current_input_port(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -204,7 +204,7 @@ fn primitive_current_input_port(
 }
 
 fn primitive_current_output_port(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -213,7 +213,7 @@ fn primitive_current_output_port(
 }
 
 fn primitive_write_char(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -241,7 +241,7 @@ fn primitive_write_char(
 }
 
 fn primitive_read(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -261,7 +261,7 @@ fn primitive_read(
     }
 }
 
-fn primitive_output<F>(interp: &Interp, args: &[Value], func: F) -> Result<EvalResult, SchemeError>
+fn primitive_output<F>(interp: &Scheme, args: &[Value], func: F) -> Result<EvalResult, SchemeError>
 where
     F: FnOnce(Value) -> String,
 {
@@ -279,7 +279,7 @@ where
 }
 
 fn primitive_display(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -287,14 +287,14 @@ fn primitive_display(
 }
 
 fn primitive_write(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     primitive_output(interp, args, |obj| interp.write(obj))
 }
 
-pub fn register(interp: &Interp) {
+pub fn register(interp: &Scheme) {
     interp.define_primitive("open-input-file", primitive_open_input_file);
     interp.define_primitive("open-input-string", primitive_open_input_string);
     interp.define_primitive("close-input-port", primitive_close_input_port);

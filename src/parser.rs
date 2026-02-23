@@ -3,7 +3,7 @@ use std::iter::Peekable;
 use std::path::{Path, PathBuf};
 
 use crate::heap::Handle;
-use crate::interp::Interp;
+use crate::interp::Scheme;
 use crate::types::{Number, SchemeError, Value};
 
 pub struct Parser<R: Read> {
@@ -99,7 +99,7 @@ impl<R: Read> Parser<R> {
 
     fn parse_number_with_sign(
         &mut self,
-        interp: &Interp,
+        interp: &Scheme,
         sign: Option<u8>,
     ) -> Result<Handle, SchemeError> {
         let mut token = String::new();
@@ -152,13 +152,13 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn parse_number(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    fn parse_number(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         self.parse_number_with_sign(interp, None)
     }
 
     fn parse_symbol_with_lead(
         &mut self,
-        interp: &Interp,
+        interp: &Scheme,
         lead: Option<u8>,
     ) -> Result<Handle, SchemeError> {
         let mut token = String::new();
@@ -176,11 +176,11 @@ impl<R: Read> Parser<R> {
         return Ok(interp.lookup(&token));
     }
 
-    fn parse_symbol(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    fn parse_symbol(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         return self.parse_symbol_with_lead(interp, None);
     }
 
-    fn parse_hash_number(&mut self, interp: &Interp, radix: u32) -> Result<Handle, SchemeError> {
+    fn parse_hash_number(&mut self, interp: &Scheme, radix: u32) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         while let Some(byte) = self.peek() {
             let ch = byte as char;
@@ -197,7 +197,7 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn parse_hash_character(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    fn parse_hash_character(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         while let Some(ch) = self.peek() {
             let ch = ch as char;
@@ -226,7 +226,7 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn parse_hash(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    fn parse_hash(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         self.check_for(b'#')?;
         match self.next() {
             Some(ch) if ch == b'(' => self.parse_vector(interp),
@@ -244,7 +244,7 @@ impl<R: Read> Parser<R> {
         }
     }
 
-    fn parse_string(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    fn parse_string(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         let mut token = String::new();
         self.check_for(b'"')?;
         while let Some(ch) = self.peek() {
@@ -269,7 +269,7 @@ impl<R: Read> Parser<R> {
         self.syntax_error(format!("Unexpected end of file while parsing string."))
     }
 
-    fn parse_list(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    fn parse_list(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         let mut items = Vec::new();
         self.skip_whitespace();
         while let Some(c) = self.peek() {
@@ -304,7 +304,7 @@ impl<R: Read> Parser<R> {
         self.syntax_error(format!("Unexpected end of file while parsing list."))
     }
 
-    fn parse_vector(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    fn parse_vector(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         let mut list = Vec::new();
         self.skip_whitespace();
         while let Some(c) = self.peek() {
@@ -318,7 +318,7 @@ impl<R: Read> Parser<R> {
         return Ok(interp.alloc_vector_from_handles(&list));
     }
 
-    fn do_read(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    fn do_read(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         self.skip_whitespace();
         let current = self.peek();
         return match current {
@@ -370,7 +370,7 @@ impl<R: Read> Parser<R> {
         };
     }
 
-    pub fn read(&mut self, interp: &Interp) -> Result<Handle, SchemeError> {
+    pub fn read(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         // dbg!(self.lineno);
         self.do_read(interp)
     }
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_parse_number() {
-        let interp = Interp::new(&SchemeOptions::new());
+        let interp = Scheme::new(&SchemeOptions::new());
         let inputs = vec!["42", "-3", "0", "3.14", "-0.001", "2e10", "-1.5E-3"];
         let expected = vec![
             Value::Number(Number::Int(42)),
@@ -433,7 +433,7 @@ mod tests {
             ("#\\space", Value::Char(32)),
             ("#\\A", Value::Char(65)),
         ];
-        let interp = Interp::new(&SchemeOptions::new());
+        let interp = Scheme::new(&SchemeOptions::new());
         for (text, value) in ok_inputs {
             let mut parser = Parser::new(text.as_bytes());
             assert_eq!(
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_parse_symbol() {
-        let interp = Interp::new(&SchemeOptions::new());
+        let interp = Scheme::new(&SchemeOptions::new());
         let inputs = vec!["some-symbol"];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn test_parse_string() {
-        let interp = Interp::new(&SchemeOptions::new());
+        let interp = Scheme::new(&SchemeOptions::new());
         let inputs = vec!["\"Hello World\""];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_parse_list() {
-        let interp = Interp::new(&SchemeOptions::new());
+        let interp = Scheme::new(&SchemeOptions::new());
         let inputs = vec!["1 . 2)", ")", "1 2 3)"];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());

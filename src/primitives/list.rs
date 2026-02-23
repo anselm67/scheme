@@ -2,12 +2,12 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     env::Env,
-    interp::Interp,
+    interp::Scheme,
     types::{EvalResult, Number, SchemeError, Value},
 };
 
 fn primitive_list(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -19,7 +19,7 @@ fn primitive_list(
 }
 
 fn primitive_append(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -61,7 +61,7 @@ fn primitive_append(
 }
 
 fn primitive_length(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -81,7 +81,7 @@ fn primitive_length(
 }
 
 fn primitive_pair_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -90,7 +90,7 @@ fn primitive_pair_p(
 }
 
 fn primitive_list_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -101,7 +101,7 @@ fn primitive_list_p(
 }
 
 fn primitive_null_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -110,7 +110,7 @@ fn primitive_null_p(
 }
 
 fn primitive_list_cons(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -119,7 +119,7 @@ fn primitive_list_cons(
 }
 
 fn primitive_list_car(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -129,7 +129,7 @@ fn primitive_list_car(
 }
 
 fn primitive_list_cdr(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -138,7 +138,7 @@ fn primitive_list_cdr(
     EvalResult::done(cdr)
 }
 
-pub fn register(interp: &Interp) {
+pub fn register(interp: &Scheme) {
     interp.define_primitive("list", primitive_list);
     interp.define_primitive("append", primitive_append);
     interp.define_primitive("length", primitive_length);

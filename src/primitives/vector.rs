@@ -2,12 +2,12 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     env::Env,
-    interp::Interp,
+    interp::Scheme,
     types::{EvalResult, Number, SchemeError, Value},
 };
 
 fn primitive_vector_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -16,7 +16,7 @@ fn primitive_vector_p(
 }
 
 fn primitive_make_vector(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -31,7 +31,7 @@ fn primitive_make_vector(
 }
 
 fn primitive_vector(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -39,7 +39,7 @@ fn primitive_vector(
 }
 
 fn primitive_vector_length(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -51,7 +51,7 @@ fn primitive_vector_length(
 }
 
 fn primitive_vector_ref(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -71,7 +71,7 @@ fn primitive_vector_ref(
 }
 
 fn primitive_vector_set(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -92,7 +92,7 @@ fn primitive_vector_set(
 }
 
 fn primitive_vector_to_list(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -106,7 +106,7 @@ fn primitive_vector_to_list(
 }
 
 fn primitive_list_to_vector(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -119,7 +119,7 @@ fn primitive_list_to_vector(
 }
 
 fn primitive_vector_fill(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -130,7 +130,7 @@ fn primitive_vector_fill(
     EvalResult::done(args[1])
 }
 
-pub fn register(interp: &Interp) {
+pub fn register(interp: &Scheme) {
     interp.define_primitive("vector?", primitive_vector_p);
     interp.define_primitive("make-vector", primitive_make_vector);
     interp.define_primitive("vector", primitive_vector);

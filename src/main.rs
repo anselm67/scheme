@@ -3,9 +3,9 @@ use rustyline::error::ReadlineError;
 use scheme::parser::Parser;
 use scheme::types::Value;
 
-use scheme::interp::{Interp, SchemeOptions};
+use scheme::interp::{Scheme, SchemeOptions};
 
-fn eval_expr(interp: &Interp, expr: Value) {
+fn eval_expr(interp: &Scheme, expr: Value) {
     let expansion = interp.expand(expr);
     expansion
         .and_then(|expanded| {
@@ -21,7 +21,7 @@ fn eval_expr(interp: &Interp, expr: Value) {
 
 const HISTORY_FILENAME: &str = ".scheme.history";
 
-fn repl(interp: &Interp) {
+fn repl(interp: &Scheme) {
     let mut rl = DefaultEditor::new().expect("Failed to init REPL.");
 
     if rl.load_history(HISTORY_FILENAME).is_err() {
@@ -78,7 +78,7 @@ fn main() {
         .set_init_scheme(arg.init)
         .set_heap_size(arg.heap_size);
 
-    let interp = Interp::new(&options);
+    let interp = Scheme::new(&options);
     for file in &arg.files {
         println!("Loading {}", file);
         match interp.load(file) {

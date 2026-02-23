@@ -6,9 +6,9 @@ mod port;
 mod string;
 mod system;
 mod vector;
-use crate::interp::Interp;
+use crate::interp::Scheme;
 
-pub fn register_all(interp: &Interp) {
+pub fn register_all(interp: &Scheme) {
     eval::register(interp);
     system::register(interp);
     number::register(interp);

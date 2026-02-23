@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::interp::{Interp, SchemeOptions};
+use crate::interp::{Scheme, SchemeOptions};
 
 fn get_test_files() -> Vec<PathBuf> {
     let dir = "src/scheme";
@@ -23,7 +23,7 @@ fn get_test_files() -> Vec<PathBuf> {
 
 #[test]
 fn run_scheme_tests() {
-    let interp = Interp::new(&SchemeOptions::new());
+    let interp = Scheme::new(&SchemeOptions::new());
     let test_files = get_test_files();
 
     for file in test_files {

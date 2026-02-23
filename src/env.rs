@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    interp::Interp,
+    interp::Scheme,
     markset::MarkSet,
     types::{GcId, SchemeError, SchemeObject, Value},
 };
@@ -74,7 +74,7 @@ impl Env {
         }
     }
 
-    fn mark_this(&self, interp: &Interp, marks: &mut MarkSet) {
+    fn mark_this(&self, interp: &Scheme, marks: &mut MarkSet) {
         // Marks the macros and their definitions.
         for (id, value) in self.macros.iter() {
             id.mark(interp, marks);
@@ -87,7 +87,7 @@ impl Env {
         }
     }
 
-    pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
+    pub fn mark(&self, interp: &Scheme, marks: &mut MarkSet) {
         if marks.mark_env(self) {
             return;
         }

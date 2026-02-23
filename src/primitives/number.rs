@@ -2,12 +2,12 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     env::Env,
-    interp::Interp,
+    interp::Scheme,
     types::{EvalResult, Number, SchemeError, Value},
 };
 
 fn primitive_add(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -17,7 +17,7 @@ fn primitive_add(
 }
 
 fn primitive_sub(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -39,7 +39,7 @@ fn primitive_sub(
 }
 
 fn primitive_div(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -61,7 +61,7 @@ fn primitive_div(
 }
 
 fn primitive_mul(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -71,7 +71,7 @@ fn primitive_mul(
 }
 
 fn primitive_rem(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -80,7 +80,7 @@ fn primitive_rem(
 }
 
 fn primitive_number_eq(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -89,7 +89,7 @@ fn primitive_number_eq(
 }
 
 fn primitive_number_lt(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -98,7 +98,7 @@ fn primitive_number_lt(
 }
 
 fn primitive_number_lte(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -107,7 +107,7 @@ fn primitive_number_lte(
 }
 
 fn primitive_number_gt(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -116,7 +116,7 @@ fn primitive_number_gt(
 }
 
 fn primitive_number_gte(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -125,7 +125,7 @@ fn primitive_number_gte(
 }
 
 fn primitive_number_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -134,7 +134,7 @@ fn primitive_number_p(
 }
 
 fn primitive_integer_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -143,7 +143,7 @@ fn primitive_integer_p(
 }
 
 fn primitive_float_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -152,7 +152,7 @@ fn primitive_float_p(
 }
 
 fn primitive_number_max(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -170,7 +170,7 @@ fn primitive_number_max(
 }
 
 fn primitive_number_min(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -188,7 +188,7 @@ fn primitive_number_min(
 }
 
 fn primitive_sqt(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -198,7 +198,7 @@ fn primitive_sqt(
     EvalResult::done(Value::Number(value.sqrt()))
 }
 
-pub fn register(interp: &Interp) {
+pub fn register(interp: &Scheme) {
     interp.define_primitive("number?", primitive_number_p);
     interp.define_primitive("integer?", primitive_integer_p);
     interp.define_primitive("float?", primitive_float_p);

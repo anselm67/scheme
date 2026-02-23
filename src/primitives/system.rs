@@ -2,12 +2,12 @@ use std::{cell::RefCell, process, rc::Rc};
 
 use crate::{
     env::Env,
-    interp::Interp,
+    interp::Scheme,
     types::{EvalResult, SchemeError, Value},
 };
 
 fn primitive_gc(
-    interp: &Interp,
+    interp: &Scheme,
     env: Rc<RefCell<Env>>,
     _args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -16,7 +16,7 @@ fn primitive_gc(
 }
 
 fn primitive_heap_stats(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     _args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -30,7 +30,7 @@ fn primitive_heap_stats(
 }
 
 fn primitive_debug(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -49,7 +49,7 @@ fn primitive_debug(
 }
 
 fn primitive_load(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -62,7 +62,7 @@ fn primitive_load(
 }
 
 fn primitive_quit(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -76,7 +76,7 @@ fn primitive_quit(
     }
 }
 
-pub fn register(interp: &Interp) {
+pub fn register(interp: &Scheme) {
     interp.define_primitive("gc", primitive_gc);
     interp.define_primitive("heap-stats", primitive_heap_stats);
     interp.define_primitive("debug", primitive_debug);

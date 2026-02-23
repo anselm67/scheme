@@ -9,13 +9,13 @@ use std::{
 use crate::{
     check_arity,
     env::Env,
-    interp::Interp,
+    interp::Scheme,
     markset::MarkSet,
     types::{EvalResult, GcId, SchemeError, SchemeObject, Value},
 };
 
 pub type PrimitiveFn =
-    fn(&Interp, env: Rc<RefCell<Env>>, &[Value]) -> Result<EvalResult, SchemeError>;
+    fn(&Scheme, env: Rc<RefCell<Env>>, &[Value]) -> Result<EvalResult, SchemeError>;
 
 #[derive(Clone)]
 pub struct Closure {
@@ -87,7 +87,7 @@ impl HeapObject {
         }
     }
 
-    pub fn is_equal(&self, interp: &Interp, other: &HeapObject) -> bool {
+    pub fn is_equal(&self, interp: &Scheme, other: &HeapObject) -> bool {
         match (self, other) {
             (HeapObject::FreeSlot(_), HeapObject::FreeSlot(_)) => false,
             (HeapObject::Pair(acar, acdr), HeapObject::Pair(bcar, bcdr)) => {
@@ -122,7 +122,7 @@ pub enum Keyword {
     DefineSyntax = 8,
 }
 
-fn extract_param_ids(interp: &Interp, params: Value) -> Result<(Vec<GcId>, bool), SchemeError> {
+fn extract_param_ids(interp: &Scheme, params: Value) -> Result<(Vec<GcId>, bool), SchemeError> {
     let mut ids = Vec::new();
     let mut p = params;
     let mut is_nary = false;
@@ -164,7 +164,7 @@ impl Keyword {
     }
 
     fn eval(
-        interp: &Interp,
+        interp: &Scheme,
         env: Rc<RefCell<Env>>,
         keyword: Keyword,
         args: &[Value],
@@ -589,7 +589,7 @@ impl Heap {
         Ok(self.handle_id(id))
     }
 
-    pub fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
+    pub fn mark(&self, interp: &Scheme, marks: &mut MarkSet) {
         for id in self.symbols.values() {
             id.mark(interp, marks);
         }
@@ -617,7 +617,7 @@ impl Heap {
 pub trait Apply {
     fn apply(
         &self,
-        interp: &Interp,
+        interp: &Scheme,
         env: Rc<RefCell<Env>>,
         args: Vec<Value>,
     ) -> Result<EvalResult, SchemeError>;
@@ -626,7 +626,7 @@ pub trait Apply {
 impl Apply for Value {
     fn apply(
         &self,
-        interp: &Interp,
+        interp: &Scheme,
         env: Rc<RefCell<Env>>,
         args: Vec<Value>,
     ) -> Result<EvalResult, SchemeError> {
@@ -697,7 +697,7 @@ impl Apply for Value {
 }
 
 impl SchemeObject for GcId {
-    fn eval(&self, interp: &Interp, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError> {
+    fn eval(&self, interp: &Scheme, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError> {
         let id = *self;
         let obj = {
             let heap = interp.heap.borrow();
@@ -749,7 +749,7 @@ impl SchemeObject for GcId {
         return *self == Keyword::False as usize;
     }
 
-    fn write(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let id = *self;
         let heap = interp.heap.borrow();
         let obj = heap.get(id);
@@ -804,7 +804,7 @@ impl SchemeObject for GcId {
         }
     }
 
-    fn display(&self, interp: &Interp, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn display(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let id = *self;
         let heap = interp.heap.borrow();
         let obj = heap.get(id);
@@ -850,7 +850,7 @@ impl SchemeObject for GcId {
         }
     }
 
-    fn mark(&self, interp: &Interp, marks: &mut MarkSet) {
+    fn mark(&self, interp: &Scheme, marks: &mut MarkSet) {
         // If we've already been marked, no need to walk through again.
         let id = *self;
         if !marks.mark(id) {

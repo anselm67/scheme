@@ -2,12 +2,12 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     env::Env,
-    interp::Interp,
+    interp::Scheme,
     types::{EvalResult, SchemeError, Value},
 };
 
 fn primitive_eval(
-    interp: &Interp,
+    interp: &Scheme,
     env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -16,7 +16,7 @@ fn primitive_eval(
 }
 
 fn primitive_apply(
-    interp: &Interp,
+    interp: &Scheme,
     env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -37,7 +37,7 @@ fn primitive_apply(
 }
 
 fn primitive_expand(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -47,7 +47,7 @@ fn primitive_expand(
 }
 
 fn primitive_equal(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -56,7 +56,7 @@ fn primitive_equal(
 }
 
 fn primitive_eq(
-    _interp: &Interp,
+    _interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -65,7 +65,7 @@ fn primitive_eq(
 }
 
 fn primitive_error(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -75,7 +75,7 @@ fn primitive_error(
 }
 
 fn primitive_with_exception_handler(
-    interp: &Interp,
+    interp: &Scheme,
     env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -93,7 +93,7 @@ fn primitive_with_exception_handler(
 }
 
 fn primitive_procedure_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -102,7 +102,7 @@ fn primitive_procedure_p(
 }
 
 fn primitive_closure_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -111,7 +111,7 @@ fn primitive_closure_p(
 }
 
 fn primitive_closure_body(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -124,7 +124,7 @@ fn primitive_closure_body(
 }
 
 fn primitive_symbol_p(
-    interp: &Interp,
+    interp: &Scheme,
     _env: Rc<RefCell<Env>>,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
@@ -132,7 +132,7 @@ fn primitive_symbol_p(
     EvalResult::done(Value::Boolean(interp.is_symbol(args[0]).is_some()))
 }
 
-pub fn register(interp: &Interp) {
+pub fn register(interp: &Scheme) {
     interp.define("#t", Value::Boolean(true));
     interp.define("#f", Value::Boolean(false));
     interp.define_primitive("eval", primitive_eval);

@@ -1,5 +1,5 @@
 use crate::heap::Heap;
-use crate::interp::{Interp, SchemeOptions};
+use crate::interp::{Scheme, SchemeOptions};
 use crate::types::SchemeError::UnboundVariable;
 use crate::types::{Number, Value};
 
@@ -15,7 +15,7 @@ fn test_intern_symbol() {
 
 #[test]
 fn test_eval_symbol() {
-    let interp = Interp::new(&SchemeOptions::new());
+    let interp = Scheme::new(&SchemeOptions::new());
     let mut heap = interp.heap.borrow_mut();
     // Creates an unbound symbol, and attempt to evaluate it.
     let symbol = heap.raw_intern_symbol("test-symbol").expect("test-symbol");
@@ -38,7 +38,7 @@ fn test_eval_symbol() {
 
 #[test]
 fn test_eval_string() {
-    let interp = Interp::new(&SchemeOptions::new());
+    let interp = Scheme::new(&SchemeOptions::new());
     let string = interp.alloc_string("Hello, World!").value();
     let Value::Object(string_id) = string else {
         panic!("Expected Value::Object");
@@ -52,7 +52,7 @@ fn test_eval_string() {
 
 #[test]
 fn test_true_and_false_symbols() {
-    let interp = Interp::new(&SchemeOptions::new());
+    let interp = Scheme::new(&SchemeOptions::new());
 
     let true_sym = interp.intern_symbol("#t").value();
     let false_sym = interp.intern_symbol("#f").value();
