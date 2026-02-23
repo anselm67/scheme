@@ -113,17 +113,16 @@
 )
 
 (define (assert-equal object value)
-    (if (equal? object value) #t (error "test failed."))
+    (if (equal? object value) #t 
+        (begin (display "Expected: ") (display object) (newline)
+            (display "Actual: ") (display value) (newline)
+            (error "test failed.")))
 )
 
 (define-syntax assert-fails
-    (lambda (expr) 
+    (lambda (expr)
         `(assert-equal 'test-failed 
-            (catch (lambda (err) 'test-fail(let ((port (open-output-string)))
-        (with-output-port
-            port 
-            (lambda () (write "hello\n") (get-output-string))))ed) ,expr)
-        ))
+            (catch (lambda (err) 'test-failed) ,expr)))
 )
 
 (define (reverse lst)

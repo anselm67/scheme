@@ -1,11 +1,11 @@
-use crate::types::Number;
+use crate::{interp::SchemeOptions, types::Number};
 
 #[test]
 fn test_eval_self_types() {
     use crate::interp::Interp;
     use crate::types::Value;
 
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
 
     let int_val = Value::Number(Number::Int(342));
     let float_val = Value::Number(Number::Float(3.14));

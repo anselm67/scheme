@@ -3,7 +3,7 @@ use rustyline::error::ReadlineError;
 use scheme::parser::Parser;
 use scheme::types::Value;
 
-use scheme::interp::Interp;
+use scheme::interp::{Interp, SchemeOptions};
 
 fn eval_expr(interp: &Interp, expr: Value) {
     let expansion = interp.expand(expr);
@@ -57,8 +57,36 @@ fn repl(interp: &Interp) {
         .expect(format!("Failed to save history to {}.", HISTORY_FILENAME).as_str());
 }
 
-fn main() {
-    let interp = Interp::new();
+#[derive(clap::Parser, Debug)]
+#[command(author, version, about="A rusty Scheme interpreter.", long_about=None)]
+struct Arg {
+    /// List of files to load upon startup.
+    files: Vec<String>,
 
+    /// Do not load the Scheme code that implements full R4RS compliance.
+    #[arg(long = "no-init", default_value_t = true, action=clap::ArgAction::SetFalse)]
+    init: bool,
+
+    /// Initial heap size in number of objects.
+    #[arg(short = 's', long, default_value_t = 8192)]
+    heap_size: usize,
+}
+
+fn main() {
+    let arg = <Arg as clap::Parser>::parse();
+    let options = SchemeOptions::new()
+        .set_init_scheme(arg.init)
+        .set_heap_size(arg.heap_size);
+
+    let interp = Interp::new(&options);
+    for file in &arg.files {
+        println!("Loading {}", file);
+        match interp.load(file) {
+            Err(e) => {
+                panic!("Failed to load {}: {}", file.to_string(), e);
+            }
+            _ => {}
+        }
+    }
     repl(&interp);
 }

@@ -391,11 +391,13 @@ impl Parser<std::fs::File> {
 
 #[cfg(test)]
 mod tests {
+    use crate::interp::SchemeOptions;
+
     use super::*;
 
     #[test]
     fn test_parse_number() {
-        let interp = Interp::new();
+        let interp = Interp::new(&SchemeOptions::new());
         let inputs = vec!["42", "-3", "0", "3.14", "-0.001", "2e10", "-1.5E-3"];
         let expected = vec![
             Value::Number(Number::Int(42)),
@@ -431,7 +433,7 @@ mod tests {
             ("#\\space", Value::Char(32)),
             ("#\\A", Value::Char(65)),
         ];
-        let interp = Interp::new();
+        let interp = Interp::new(&SchemeOptions::new());
         for (text, value) in ok_inputs {
             let mut parser = Parser::new(text.as_bytes());
             assert_eq!(
@@ -443,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_parse_symbol() {
-        let interp = Interp::new();
+        let interp = Interp::new(&SchemeOptions::new());
         let inputs = vec!["some-symbol"];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
@@ -457,7 +459,7 @@ mod tests {
 
     #[test]
     fn test_parse_string() {
-        let interp = Interp::new();
+        let interp = Interp::new(&SchemeOptions::new());
         let inputs = vec!["\"Hello World\""];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());
@@ -471,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_parse_list() {
-        let interp = Interp::new();
+        let interp = Interp::new(&SchemeOptions::new());
         let inputs = vec!["1 . 2)", ")", "1 2 3)"];
         for text in inputs {
             let mut parser = Parser::new(text.as_bytes());

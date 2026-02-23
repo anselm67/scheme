@@ -1,5 +1,5 @@
 use crate::{
-    interp::Interp,
+    interp::{Interp, SchemeOptions},
     parser::Parser,
     types::{Number, SchemeError, Value},
 };
@@ -43,7 +43,7 @@ fn check_errors(interp: &Interp, inputs: &Vec<(&str, SchemeError)>) {
 
 #[test]
 fn test_cond() {
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
     let cond = interp.lookup("if");
     let tru = interp.lookup("#t");
     let fls = interp.lookup("#f");
@@ -68,7 +68,7 @@ fn test_cond() {
 
 #[test]
 fn test_nested_expr() {
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
 
     let add = interp.lookup("+");
     let mul = interp.lookup("*");
@@ -91,7 +91,7 @@ fn test_nested_expr() {
 
 #[test]
 fn test_setbang_special_form() {
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
 
     let define = interp.lookup("define").value();
     let x = interp.lookup("x");
@@ -125,7 +125,7 @@ fn test_read_eval_number() {
         ("(max 4 2.0 1)", Value::Number(Number::Int(4))),
         ("(min 4 2.0 7)", Value::Number(Number::Float(2.0))),
     ];
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
     check_exprs(&interp, &inputs);
 }
 
@@ -143,7 +143,7 @@ fn test_read_eval_closure() {
             Value::Number(Number::Int(3)),
         ),
     ];
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
     check_exprs(&interp, &inputs);
 }
 
@@ -162,7 +162,7 @@ fn test_read_eval_list() {
         ("(car '(1 . 2))", Value::Number(Number::Int(1))),
         ("(cdr '(1 . 2))", Value::Number(Number::Int(2))),
     ];
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
     check_exprs(&interp, &inputs);
 }
 
@@ -186,7 +186,7 @@ fn test_read_eval_char() {
         ("(char-ci>=? #\\A #\\a)", Value::Boolean(true)),
         ("(char-ci<=? #\\A #\\a)", Value::Boolean(true)),
     ];
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
     check_exprs(&interp, &inputs);
 }
 
@@ -196,7 +196,7 @@ fn test_read_eval_functional() {
         "(eval (append (list (list (quote lambda) (quote (x y)) (quote (+ x y))) 1 2)))",
         Value::Number(Number::Int(3)),
     )];
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
     check_exprs(&interp, &inputs);
 }
 
@@ -211,13 +211,13 @@ fn test_equality() {
         ("(equal? (list 1) (list 1))", Value::Boolean(true)),
         ("(equal? (cons 1 2) (cons 1 2))", Value::Boolean(true)),
     ];
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
     check_exprs(&interp, &inputs);
 }
 
 #[test]
 fn test_user_error() {
     let inputs = vec![("(error \"a\")", SchemeError::UserError("a".to_string()))];
-    let interp = Interp::new();
+    let interp = Interp::new(&SchemeOptions::new());
     check_errors(&interp, &inputs);
 }

@@ -61,15 +61,38 @@ impl<'a> std::fmt::Display for OutputWrapper<'a> {
     }
 }
 
-impl Interp {
+pub struct SchemeOptions {
+    heap_size: usize,
+    init_scheme: bool,
+}
+
+impl SchemeOptions {
     pub fn new() -> Self {
+        Self {
+            heap_size: 8192,
+            init_scheme: true,
+        }
+    }
+    pub fn set_init_scheme(mut self, init: bool) -> Self {
+        self.init_scheme = init;
+        self
+    }
+
+    pub fn set_heap_size(mut self, heap_size: usize) -> Self {
+        self.heap_size = heap_size;
+        self
+    }
+}
+
+impl Interp {
+    pub fn new(options: &SchemeOptions) -> Self {
         let global_env = crate::env::Env {
             macros: HashMap::new(),
             bindings: HashMap::new(),
             parent: None,
         };
         let env_handle = Rc::new(RefCell::new(global_env));
-        let heap_handle = RefCell::new(heap::Heap::new(8192));
+        let heap_handle = RefCell::new(heap::Heap::new(options.heap_size));
         let (append, list, quasiquote, unquote, unquote_splicing, apply, vector) = {
             let mut heap = heap_handle.borrow_mut();
             (
@@ -97,7 +120,7 @@ impl Interp {
             apply: apply.expect("apply symbol").value(),
             vector: vector.expect("vector symbol").value(),
         };
-        interp.init();
+        interp.init(options);
         interp
     }
 
@@ -319,10 +342,12 @@ impl Interp {
         self.define(name, prim.value());
     }
 
-    fn init(&self) {
+    fn init(&self, options: &SchemeOptions) {
         self.init_io();
         crate::primitives::register_all(self);
-        self.init_scheme();
+        if options.init_scheme {
+            self.init_scheme();
+        }
     }
 
     pub fn fold_list<T, F>(&self, list: Value, init: T, mut func: F) -> Result<T, SchemeError>
