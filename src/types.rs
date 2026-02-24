@@ -1,6 +1,6 @@
-use std::{cell::RefCell, cmp::Ordering, convert::TryFrom, fmt, rc::Rc};
+use std::{cmp::Ordering, convert::TryFrom, fmt};
 
-use crate::{env::Env, interp::Scheme, markset::MarkSet};
+use crate::{interp::Scheme, markset::MarkSet};
 
 pub type GcId = usize;
 
@@ -58,7 +58,7 @@ impl std::error::Error for SchemeError {}
 
 pub enum EvalResult {
     Done(Value),
-    Continuation(Rc<RefCell<Env>>, Value),
+    Continuation(Value, Value),
 }
 
 impl EvalResult {
@@ -67,7 +67,7 @@ impl EvalResult {
     }
 }
 pub trait SchemeObject {
-    fn eval(&self, interp: &Scheme, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError>;
+    fn eval(&self, interp: &Scheme, env: Value) -> Result<EvalResult, SchemeError>;
     fn is_false(&self) -> bool;
     fn display(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result;
     fn write(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result;
@@ -272,7 +272,7 @@ impl Value {
 }
 
 impl SchemeObject for Value {
-    fn eval(&self, interp: &Scheme, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError> {
+    fn eval(&self, interp: &Scheme, env: Value) -> Result<EvalResult, SchemeError> {
         match self {
             Value::Object(id) => id.eval(interp, env),
             _ => Ok(EvalResult::Done(*self)),

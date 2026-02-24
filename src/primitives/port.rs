@@ -6,7 +6,6 @@ use std::{
 };
 
 use crate::{
-    env::Env,
     interp::Scheme,
     parser::Parser,
     types::{EvalResult, SchemeError, Value},
@@ -14,7 +13,7 @@ use crate::{
 
 fn primitive_open_input_file(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -29,7 +28,7 @@ fn primitive_open_input_file(
 
 fn primitive_open_input_string(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -42,7 +41,7 @@ fn primitive_open_input_string(
 
 fn primitive_close_input_port(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -56,7 +55,7 @@ fn primitive_close_input_port(
 
 fn primitive_read_char(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let mut input = interp.get_input_port()?;
@@ -81,7 +80,7 @@ fn primitive_read_char(
 
 fn primitive_eof_object(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -90,7 +89,7 @@ fn primitive_eof_object(
 
 fn primitive_open_output_file(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -108,7 +107,7 @@ fn primitive_open_output_file(
 
 fn primitive_open_output_string(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 0);
@@ -118,7 +117,7 @@ fn primitive_open_output_string(
 
 fn primitive_get_output_string(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity_range!(args, 0, 1);
@@ -139,7 +138,7 @@ fn primitive_get_output_string(
 
 fn primitive_close_output_port(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -153,7 +152,7 @@ fn primitive_close_output_port(
 
 fn primitive_flush_output_port(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity_range!(args, 0, 1);
@@ -174,7 +173,7 @@ fn primitive_flush_output_port(
 
 fn primitive_with_input_port(
     interp: &Scheme,
-    env: Rc<RefCell<Env>>,
+    env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
@@ -185,7 +184,7 @@ fn primitive_with_input_port(
 
 fn primitive_with_output_port(
     interp: &Scheme,
-    env: Rc<RefCell<Env>>,
+    env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
@@ -196,7 +195,7 @@ fn primitive_with_output_port(
 
 fn primitive_current_input_port(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 0);
@@ -205,7 +204,7 @@ fn primitive_current_input_port(
 
 fn primitive_current_output_port(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 0);
@@ -214,7 +213,7 @@ fn primitive_current_output_port(
 
 fn primitive_write_char(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let mut output = interp.get_output_port()?;
@@ -240,11 +239,7 @@ fn primitive_write_char(
     }
 }
 
-fn primitive_read(
-    interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_read(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let mut input = interp.get_input_port()?;
     if args.len() == 1 {
         input = interp.to_input_port(args[0])?;
@@ -280,7 +275,7 @@ where
 
 fn primitive_display(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     primitive_output(interp, args, |obj| interp.display(obj))
@@ -288,7 +283,7 @@ fn primitive_display(
 
 fn primitive_write(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     primitive_output(interp, args, |obj| interp.write(obj))

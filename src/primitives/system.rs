@@ -1,23 +1,18 @@
-use std::{cell::RefCell, process, rc::Rc};
+use std::process;
 
 use crate::{
-    env::Env,
     interp::Scheme,
     types::{EvalResult, SchemeError, Value},
 };
 
-fn primitive_gc(
-    interp: &Scheme,
-    env: Rc<RefCell<Env>>,
-    _args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_gc(interp: &Scheme, env: Value, _args: &[Value]) -> Result<EvalResult, SchemeError> {
     interp.gc(Some(env));
     EvalResult::done(Value::Nil)
 }
 
 fn primitive_heap_stats(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     _args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let stats = interp.heap.borrow().stats();
@@ -31,7 +26,7 @@ fn primitive_heap_stats(
 
 fn primitive_debug(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let output = interp.get_output_port()?;
@@ -48,11 +43,7 @@ fn primitive_debug(
     EvalResult::done(Value::Boolean(true))
 }
 
-fn primitive_load(
-    interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_load(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let mut retval = Value::Nil;
     for arg in args {
         let filename = interp.to_string(*arg)?.to_string();
@@ -63,7 +54,7 @@ fn primitive_load(
 
 fn primitive_quit(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, exit_code: Number);

@@ -1,26 +1,15 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{
-    env::Env,
     interp::Scheme,
     types::{EvalResult, Number, SchemeError, Value},
 };
 
-fn primitive_add(
-    _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_add(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     let sum = nums.into_iter().fold(Number::Int(0), |acc, n| acc + n);
     EvalResult::done(Value::Number(sum))
 }
 
-fn primitive_sub(
-    _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_sub(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
@@ -38,11 +27,7 @@ fn primitive_sub(
     EvalResult::done(Value::Number(sub))
 }
 
-fn primitive_div(
-    _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_div(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     if nums.is_empty() {
         return Err(SchemeError::ArgCountError(
@@ -60,28 +45,20 @@ fn primitive_div(
     EvalResult::done(Value::Number(div))
 }
 
-fn primitive_mul(
-    _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_mul(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     let mul = nums.into_iter().fold(Number::Int(1), |acc, n| acc * n);
     EvalResult::done(Value::Number(mul))
 }
 
-fn primitive_rem(
-    _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_rem(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
     EvalResult::done(Value::Number(*a % *b))
 }
 
 fn primitive_number_eq(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
@@ -90,7 +67,7 @@ fn primitive_number_eq(
 
 fn primitive_number_lt(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
@@ -99,7 +76,7 @@ fn primitive_number_lt(
 
 fn primitive_number_lte(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
@@ -108,7 +85,7 @@ fn primitive_number_lte(
 
 fn primitive_number_gt(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
@@ -117,7 +94,7 @@ fn primitive_number_gt(
 
 fn primitive_number_gte(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
@@ -126,7 +103,7 @@ fn primitive_number_gte(
 
 fn primitive_number_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -135,7 +112,7 @@ fn primitive_number_p(
 
 fn primitive_integer_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -144,7 +121,7 @@ fn primitive_integer_p(
 
 fn primitive_float_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -153,7 +130,7 @@ fn primitive_float_p(
 
 fn primitive_number_max(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
@@ -171,7 +148,7 @@ fn primitive_number_max(
 
 fn primitive_number_min(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
@@ -187,11 +164,7 @@ fn primitive_number_min(
     EvalResult::done(Value::Number(ret))
 }
 
-fn primitive_sqt(
-    interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_sqt(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let value = interp.to_number(args[0])?;
 

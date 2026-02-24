@@ -9,7 +9,7 @@ use crate::{
 pub struct Env {
     pub macros: HashMap<GcId, Value>,
     pub bindings: HashMap<GcId, Value>,
-    pub parent: Option<Rc<RefCell<Env>>>,
+    pub parent: Option<Value>,
 }
 
 impl Env {
@@ -21,11 +21,11 @@ impl Env {
         }
     }
 
-    pub fn extend(parent: Rc<RefCell<Env>>) -> Rc<RefCell<Env>> {
+    pub fn extend(parent: Value) -> Rc<RefCell<Env>> {
         Rc::new(RefCell::new(Env {
             macros: HashMap::new(),
             bindings: HashMap::new(),
-            parent: Some(parent.clone()),
+            parent: Some(parent),
         }))
     }
 
@@ -37,8 +37,13 @@ impl Env {
         self.macros.insert(key, value);
     }
 
-    pub fn set_bang(env_rc: Rc<RefCell<Env>>, key: GcId, value: Value) -> Result<(), SchemeError> {
-        let mut current_rc = env_rc.clone();
+    pub fn set_bang(
+        interp: &Scheme,
+        env: Value,
+        key: GcId,
+        value: Value,
+    ) -> Result<(), SchemeError> {
+        let mut current_rc = interp.to_env(env);
         loop {
             {
                 let mut env = current_rc.borrow_mut();
@@ -49,10 +54,10 @@ impl Env {
             }
             let next_opt = {
                 let env_ref = current_rc.borrow();
-                env_ref.parent.clone()
+                env_ref.parent
             };
             match next_opt {
-                Some(p) => current_rc = p,
+                Some(p) => current_rc = interp.to_env(p),
                 None => {
                     return Err(SchemeError::UnboundVariable(format!(
                         "Unbound variable with GcId {}",
@@ -63,18 +68,21 @@ impl Env {
         }
     }
 
-    pub fn lookup(&self, key: GcId) -> Option<Value> {
+    pub fn lookup(&self, interp: &Scheme, key: GcId) -> Option<Value> {
         if let Some(value) = self.bindings.get(&key) {
             Some(*value)
         } else {
             match &self.parent {
-                Some(parent_env) => parent_env.borrow().lookup(key),
+                Some(parent) => {
+                    let env = interp.to_env(*parent);
+                    env.borrow().lookup(interp, key)
+                }
                 None => None,
             }
         }
     }
 
-    fn mark_this(&self, interp: &Scheme, marks: &mut MarkSet) {
+    pub fn mark(&self, interp: &Scheme, marks: &mut MarkSet) {
         // Marks the macros and their definitions.
         for (id, value) in self.macros.iter() {
             id.mark(interp, marks);
@@ -85,19 +93,9 @@ impl Env {
             id.mark(interp, marks);
             value.mark(interp, marks);
         }
-    }
-
-    pub fn mark(&self, interp: &Scheme, marks: &mut MarkSet) {
-        if marks.mark_env(self) {
-            return;
-        }
-        self.mark_this(interp, marks);
-
-        let mut parent = self.parent.clone();
-        while let Some(parent_rc) = parent {
-            let inner = parent_rc.borrow();
-            inner.mark_this(interp, marks);
-            parent = inner.parent.clone();
+        // Marks the optional parent env, is any.
+        if let Some(id) = self.parent {
+            id.mark(interp, marks);
         }
     }
 }

@@ -14,15 +14,14 @@ use crate::{
     types::{EvalResult, GcId, SchemeError, SchemeObject, Value},
 };
 
-pub type PrimitiveFn =
-    fn(&Scheme, env: Rc<RefCell<Env>>, &[Value]) -> Result<EvalResult, SchemeError>;
+pub type PrimitiveFn = fn(&Scheme, env: Value, &[Value]) -> Result<EvalResult, SchemeError>;
 
 #[derive(Clone)]
 pub struct Closure {
     params: Box<[GcId]>,
     body: Box<[Value]>,
     tail: Value,
-    env: Rc<RefCell<Env>>,
+    env: Value,
 }
 
 impl Closure {
@@ -60,15 +59,18 @@ pub struct OutputPort {
 pub enum HeapObject {
     FreeSlot(GcId),
     Pair(Value, Value),
+    // TODO => Rc
     Vector(Vector),
     Symbol(String),
+    // TODO => Rc
     String(String),
     Primitive(PrimitiveFn),
     Closure(Box<Closure>),
     NaryClosure(Box<Closure>),
     InputPort(Rc<RefCell<Option<Box<dyn BufRead>>>>),
+    // TODO => Rc and remove nested Rc
     OutputPort(OutputPort),
-    // Other heap-allocated object types can be added here
+    Env(Rc<RefCell<Env>>),
 }
 
 impl HeapObject {
@@ -84,6 +86,7 @@ impl HeapObject {
             Self::NaryClosure(_) => "n-Closure",
             Self::InputPort(_) => "InputPort",
             Self::OutputPort(_) => "OutputPort",
+            Self::Env(_) => "Env",
         }
     }
 
@@ -165,14 +168,14 @@ impl Keyword {
 
     fn eval(
         interp: &Scheme,
-        env: Rc<RefCell<Env>>,
+        env: Value,
         keyword: Keyword,
         args: &[Value],
     ) -> Result<EvalResult, SchemeError> {
         match keyword {
             Keyword::If => {
                 check_arity!(args, 3);
-                let condition = interp.eval(env.clone(), args[0])?;
+                let condition = interp.eval(env, args[0])?;
                 match condition {
                     Value::Boolean(false) => Ok(EvalResult::Continuation(env, args[2])),
                     _ => Ok(EvalResult::Continuation(env, args[1])),
@@ -182,6 +185,7 @@ impl Keyword {
                 check_arity!(args, 2);
                 let symbol = interp.to_object(args[0])?;
                 let value = interp.eval(env.clone(), args[1])?;
+                let env = interp.to_env(env);
                 env.borrow_mut().define(symbol, value);
                 Ok(EvalResult::Done(Value::Nil))
             }
@@ -189,6 +193,7 @@ impl Keyword {
                 check_arity!(args, 2);
                 let symbol = interp.to_symbol(args[0])?;
                 let value = interp.eval(env.clone(), args[1])?;
+                let env = interp.to_env(env);
                 env.borrow_mut().define_syntax(symbol, value);
                 Ok(EvalResult::Done(Value::Nil))
             }
@@ -238,7 +243,7 @@ impl Keyword {
                 let var = args[0];
                 let value = interp.eval(env.clone(), args[1])?;
                 if let Value::Object(var_id) = var {
-                    Env::set_bang(env.clone(), var_id, value)?;
+                    Env::set_bang(interp, env, var_id, value)?;
                     Ok(EvalResult::Done(value))
                 } else {
                     Err(SchemeError::TypeError(
@@ -473,6 +478,12 @@ impl Heap {
         }
     }
 
+    pub fn raw_alloc_env(&mut self, env: Rc<RefCell<Env>>) -> Result<Handle, SchemeError> {
+        let id: GcId = self.next_id()?;
+        self.objects[id] = HeapObject::Env(env);
+        Ok(self.handle_id(id))
+    }
+
     pub fn raw_alloc_pair(&mut self, car: Value, cdr: Value) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Pair(car, cdr);
@@ -618,7 +629,7 @@ pub trait Apply {
     fn apply(
         &self,
         interp: &Scheme,
-        env: Rc<RefCell<Env>>,
+        env: Value,
         args: Vec<Value>,
     ) -> Result<EvalResult, SchemeError>;
 }
@@ -627,7 +638,7 @@ impl Apply for Value {
     fn apply(
         &self,
         interp: &Scheme,
-        env: Rc<RefCell<Env>>,
+        env: Value,
         args: Vec<Value>,
     ) -> Result<EvalResult, SchemeError> {
         let obj = {
@@ -645,7 +656,7 @@ impl Apply for Value {
 
         match obj {
             HeapObject::Pair(car, _) => {
-                let func = interp.eval(env.clone(), car)?;
+                let func = interp.eval(env, car)?;
                 func.apply(interp, env, args)
             }
             HeapObject::Closure(closure) => {
@@ -654,10 +665,11 @@ impl Apply for Value {
                 for (param_id, arg_value) in closure.params.iter().zip(args.iter()) {
                     new_env.borrow_mut().define(*param_id, *arg_value);
                 }
+                let env_handle = interp.alloc_env(new_env.clone());
                 for expr in &closure.body {
-                    interp.eval(new_env.clone(), *expr)?;
+                    interp.eval(env_handle.value(), *expr)?;
                 }
-                Ok(EvalResult::Continuation(new_env, closure.tail))
+                Ok(EvalResult::Continuation(env_handle.value(), closure.tail))
             }
             HeapObject::NaryClosure(closure) => {
                 let new_env = Env::extend(closure.env.clone());
@@ -679,10 +691,11 @@ impl Apply for Value {
                 new_env
                     .borrow_mut()
                     .define(closure.params[index], rest.value());
+                let env_handle = interp.alloc_env(new_env);
                 for expr in &closure.body {
-                    interp.eval(new_env.clone(), *expr)?;
+                    interp.eval(env_handle.value(), *expr)?;
                 }
-                Ok(EvalResult::Continuation(new_env, closure.tail))
+                Ok(EvalResult::Continuation(env_handle.value(), closure.tail))
             }
             HeapObject::Primitive(pr) => Ok(pr(interp, env, &args)?),
             HeapObject::FreeSlot(_) => {
@@ -697,7 +710,7 @@ impl Apply for Value {
 }
 
 impl SchemeObject for GcId {
-    fn eval(&self, interp: &Scheme, env: Rc<RefCell<Env>>) -> Result<EvalResult, SchemeError> {
+    fn eval(&self, interp: &Scheme, env: Value) -> Result<EvalResult, SchemeError> {
         let id = *self;
         let obj = {
             let heap = interp.heap.borrow();
@@ -715,7 +728,7 @@ impl SchemeObject for GcId {
                         Ok(acc)
                     })?;
                     let args: Vec<Value> = arg_handles.iter().map(|h| h.value()).collect();
-                    Keyword::eval(interp, env.clone(), keyword, &args)
+                    Keyword::eval(interp, env, keyword, &args)
                 } else {
                     // Regular function call with arg eval.
                     let arg_handles = interp.fold_list(cdr, Vec::new(), |mut acc, arg| {
@@ -724,22 +737,21 @@ impl SchemeObject for GcId {
                         Ok(acc)
                     })?;
                     let func = interp.eval(env.clone(), car)?;
-                    func.apply(
-                        interp,
-                        env.clone(),
-                        arg_handles.iter().map(|h| h.value()).collect(),
-                    )
+                    func.apply(interp, env, arg_handles.iter().map(|h| h.value()).collect())
                 }
             }
-            HeapObject::Symbol(name) => match env.borrow().lookup(id) {
-                Some(value) => return Ok(EvalResult::Done(value)),
-                None => {
-                    return Err(SchemeError::UnboundVariable(format!(
-                        "Unbound symbol: {}",
-                        name
-                    )));
+            HeapObject::Symbol(name) => {
+                let env = interp.to_env(env);
+                match env.borrow().lookup(interp, id) {
+                    Some(value) => return Ok(EvalResult::Done(value)),
+                    None => {
+                        return Err(SchemeError::UnboundVariable(format!(
+                            "Unbound symbol: {}",
+                            name
+                        )));
+                    }
                 }
-            },
+            }
             HeapObject::FreeSlot(_) => panic!("Request to evaluate FreeSlot at {}", id),
             _ => Ok(EvalResult::Done(Value::Object(id))),
         }
@@ -800,6 +812,7 @@ impl SchemeObject for GcId {
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
             HeapObject::InputPort(_) => write!(f, "<input-port {}>", id),
             HeapObject::OutputPort(_) => write!(f, "<output-port {}>", id),
+            HeapObject::Env(_) => write!(f, "<env {id}>"),
             HeapObject::FreeSlot(id) => panic!("Attempt to render free slot {}", id),
         }
     }
@@ -846,6 +859,7 @@ impl SchemeObject for GcId {
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
             HeapObject::InputPort(_) => write!(f, "<input-port {}>", id),
             HeapObject::OutputPort(_) => write!(f, "<output-port {}>", id),
+            HeapObject::Env(_) => write!(f, "<env {id}>"),
             HeapObject::FreeSlot(id) => panic!("Attempt to render free slot {}", id),
         }
     }
@@ -882,7 +896,10 @@ impl SchemeObject for GcId {
                     expr.mark(interp, marks);
                 }
                 closure.tail.mark(interp, marks);
-                closure.env.borrow().mark(interp, marks);
+                closure.env.mark(interp, marks);
+            }
+            HeapObject::Env(env) => {
+                env.borrow().mark(interp, marks);
             }
             HeapObject::InputPort(_) => {}
             HeapObject::OutputPort(_) => {}

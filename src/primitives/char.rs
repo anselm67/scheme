@@ -1,14 +1,11 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{
-    env::Env,
     interp::Scheme,
     types::{EvalResult, Number, SchemeError, Value},
 };
 
 fn primitive_char_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -17,7 +14,7 @@ fn primitive_char_p(
 
 fn primitive_char_alphabetic_p(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
@@ -26,7 +23,7 @@ fn primitive_char_alphabetic_p(
 
 fn primitive_char_numeric_p(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
@@ -35,7 +32,7 @@ fn primitive_char_numeric_p(
 
 fn primitive_char_whitespace_p(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
@@ -44,7 +41,7 @@ fn primitive_char_whitespace_p(
 
 fn primitive_char_upper_case_p(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
@@ -53,7 +50,7 @@ fn primitive_char_upper_case_p(
 
 fn primitive_char_lower_case_p(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
@@ -62,7 +59,7 @@ fn primitive_char_lower_case_p(
 
 fn primitive_char_to_integer(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
@@ -71,7 +68,7 @@ fn primitive_char_to_integer(
 
 fn primitive_integer_to_char(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -81,7 +78,7 @@ fn primitive_integer_to_char(
 
 fn primitive_char_upcase(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
@@ -90,7 +87,7 @@ fn primitive_char_upcase(
 
 fn primitive_char_downcase(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
@@ -99,7 +96,7 @@ fn primitive_char_downcase(
 
 fn primitive_char_eq(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
@@ -108,7 +105,7 @@ fn primitive_char_eq(
 
 fn primitive_char_lt(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
@@ -117,7 +114,7 @@ fn primitive_char_lt(
 
 fn primitive_char_lte(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
@@ -126,7 +123,7 @@ fn primitive_char_lte(
 
 fn primitive_char_gt(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
@@ -135,7 +132,7 @@ fn primitive_char_gt(
 
 fn primitive_char_gte(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
@@ -144,7 +141,7 @@ fn primitive_char_gte(
 
 fn primitive_char_ci_eq(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
@@ -155,7 +152,7 @@ fn primitive_char_ci_eq(
 
 fn primitive_char_ci_lt(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
@@ -166,7 +163,7 @@ fn primitive_char_ci_lt(
 
 fn primitive_char_ci_lte(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
@@ -177,7 +174,7 @@ fn primitive_char_ci_lte(
 
 fn primitive_char_ci_gt(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
@@ -188,7 +185,7 @@ fn primitive_char_ci_gt(
 
 fn primitive_char_ci_gte(
     _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);

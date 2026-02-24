@@ -1,16 +1,9 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{
-    env::Env,
     interp::Scheme,
     types::{EvalResult, Number, SchemeError, Value},
 };
 
-fn primitive_list(
-    interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_list(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     if args.is_empty() {
         EvalResult::done(Value::Nil)
     } else {
@@ -20,7 +13,7 @@ fn primitive_list(
 
 fn primitive_append(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let mut retval = Value::Nil;
@@ -62,7 +55,7 @@ fn primitive_append(
 
 fn primitive_length(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -82,7 +75,7 @@ fn primitive_length(
 
 fn primitive_pair_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -91,7 +84,7 @@ fn primitive_pair_p(
 
 fn primitive_list_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -102,7 +95,7 @@ fn primitive_list_p(
 
 fn primitive_null_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -111,7 +104,7 @@ fn primitive_null_p(
 
 fn primitive_list_cons(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
@@ -120,7 +113,7 @@ fn primitive_list_cons(
 
 fn primitive_list_car(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -130,7 +123,7 @@ fn primitive_list_car(
 
 fn primitive_list_cdr(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);

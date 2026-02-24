@@ -13,9 +13,7 @@ use crate::types::{EvalResult, GcId, Number, SchemeError, SchemeObject, Value};
 
 pub struct Scheme {
     pub heap: RefCell<heap::Heap>,
-    pub env: Rc<RefCell<crate::env::Env>>,
-
-    env_stack: RefCell<Vec<Rc<RefCell<crate::env::Env>>>>,
+    pub env: Value,
 
     // IO ports
     input_stack: RefCell<Vec<Value>>,
@@ -86,13 +84,17 @@ impl SchemeOptions {
 
 impl Scheme {
     pub fn new(options: &SchemeOptions) -> Self {
+        let heap_handle = RefCell::new(heap::Heap::new(options.heap_size));
         let global_env = crate::env::Env {
             macros: HashMap::new(),
             bindings: HashMap::new(),
             parent: None,
         };
-        let env_handle = Rc::new(RefCell::new(global_env));
-        let heap_handle = RefCell::new(heap::Heap::new(options.heap_size));
+        let env = heap_handle
+            .borrow_mut()
+            .raw_alloc_env(Rc::new(RefCell::new(global_env)))
+            .expect("Failed to allocate global env.");
+
         let (append, list, quasiquote, unquote, unquote_splicing, apply, vector) = {
             let mut heap = heap_handle.borrow_mut();
             (
@@ -107,8 +109,7 @@ impl Scheme {
         };
         let interp = Self {
             heap: heap_handle,
-            env: env_handle,
-            env_stack: RefCell::new(vec![]),
+            env: env.value(),
             input_stack: RefCell::new(vec![]),
             output_stack: RefCell::new(vec![]),
 
@@ -174,6 +175,10 @@ impl Scheme {
 
     pub fn intern_symbol(&self, name: &str) -> Handle {
         self.alloc_with_retry(|heap| heap.raw_intern_symbol(name))
+    }
+
+    pub fn alloc_env(&self, env: Rc<RefCell<Env>>) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_env(env.clone()))
     }
 
     pub fn alloc_pair(&self, car: Value, cdr: Value) -> Handle {
@@ -328,7 +333,8 @@ impl Scheme {
 
     pub fn define(&self, name: &str, value: Value) -> Value {
         let symbol = self.intern_symbol(name);
-        self.env.borrow_mut().define(symbol.id(), value);
+        let env = self.to_env(self.env);
+        env.borrow_mut().define(symbol.id(), value);
         symbol.value()
     }
 
@@ -375,33 +381,25 @@ impl Scheme {
         self.intern_symbol(name)
     }
 
-    pub fn eval(&self, env: Rc<RefCell<Env>>, expr: Value) -> Result<Value, SchemeError> {
+    pub fn eval(&self, env: Value, expr: Value) -> Result<Value, SchemeError> {
         let mut current_expr = self.handle(expr);
-        let mut current_env = env.clone();
+        let mut current_env = self.handle(env);
 
         loop {
-            self.env_stack.borrow_mut().push(current_env.clone());
-            match current_expr.value().eval(self, current_env)? {
+            match current_expr.value().eval(self, current_env.value())? {
                 EvalResult::Done(value) => {
-                    self.env_stack.borrow_mut().pop();
                     return Ok(value);
                 }
                 EvalResult::Continuation(next_env, next_expr) => {
                     current_expr = self.handle(next_expr);
-                    current_env = next_env;
+                    current_env = self.handle(next_env);
                 }
             }
-            self.env_stack.borrow_mut().pop();
         }
     }
 
-    pub fn apply(
-        &self,
-        env: Rc<RefCell<Env>>,
-        f: Value,
-        args: Vec<Value>,
-    ) -> Result<Value, SchemeError> {
-        match f.apply(self, env.clone(), args)? {
+    pub fn apply(&self, env: Value, f: Value, args: Vec<Value>) -> Result<Value, SchemeError> {
+        match f.apply(self, env, args)? {
             EvalResult::Done(value) => return Ok(value),
             EvalResult::Continuation(next_env, next_expr) => self.eval(next_env, next_expr),
         }
@@ -646,6 +644,27 @@ impl Scheme {
         }
     }
 
+    pub fn is_env(&self, value: Value) -> Option<Rc<RefCell<Env>>> {
+        if let Some(id) = self.is_object(value) {
+            match self.heap.borrow().get(id) {
+                HeapObject::Env(env) => Some(env.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn to_env(&self, value: Value) -> Rc<RefCell<Env>> {
+        let id = self
+            .to_object(value)
+            .expect("to_env value isn't an Object.");
+        match self.heap.borrow().get(id) {
+            HeapObject::Env(env) => env.clone(),
+            _ => panic!("to_env: got a {}.", value.type_name()),
+        }
+    }
+
     pub fn is_pair(&self, value: Value) -> Option<(Value, Value)> {
         if let Some(id) = self.is_object(value) {
             match self.heap.borrow().get(id) {
@@ -816,7 +835,8 @@ impl Scheme {
 
     fn get_macro(&self, id: GcId) -> Option<Value> {
         // This function's purpose is to limit the scope of env borrowing.
-        self.env.borrow().macros.get(&id).cloned()
+        let env = self.to_env(self.env);
+        env.borrow().macros.get(&id).cloned()
     }
 
     pub fn expand(&self, expr: Value) -> Result<Handle, SchemeError> {
@@ -859,7 +879,7 @@ impl Scheme {
                 Value::Eof => return Ok(retval),
                 value => {
                     let expansion = self.expand(value)?;
-                    retval = self.eval(self.env.clone(), expansion.value())?;
+                    retval = self.eval(self.env, expansion.value())?;
                 }
             }
         }
@@ -870,16 +890,15 @@ impl Scheme {
         self.load_from_parser(&mut parser)
     }
 
-    pub fn gc(&self, env: Option<Rc<RefCell<Env>>>) {
+    pub fn gc(&self, env: Option<Value>) {
         let len = { self.heap.borrow().len() };
         let mut marks = MarkSet::new(len);
 
         self.mark(&mut marks);
-        self.env.borrow().mark(self, &mut marks);
-        if let Some(env) = env {
-            env.borrow().mark(self, &mut marks);
-        }
-        for env in self.env_stack.borrow().iter() {
+        let global_env = self.to_env(self.env);
+        global_env.borrow().mark(self, &mut marks);
+        if let Some(id) = env {
+            let env = self.to_env(id);
             env.borrow().mark(self, &mut marks);
         }
 
@@ -888,8 +907,7 @@ impl Scheme {
         let collected = heap.sweep(&marks);
 
         println!(
-            "gc: env-stack: {} protected {}, marked {} /{} objects, collected {}.",
-            self.env_stack.borrow().len(),
+            "gc: protected {}, marked {} /{} objects, collected {}.",
             heap.get_protected_count(),
             marks.count(),
             len,

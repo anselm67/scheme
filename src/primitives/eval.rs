@@ -1,25 +1,14 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{
-    env::Env,
     interp::Scheme,
     types::{EvalResult, SchemeError, Value},
 };
 
-fn primitive_eval(
-    interp: &Scheme,
-    env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_eval(interp: &Scheme, env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     EvalResult::done(interp.eval(env, args[0])?)
 }
 
-fn primitive_apply(
-    interp: &Scheme,
-    env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_apply(interp: &Scheme, env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     use crate::heap::Apply;
     check_min_arity!(args, 2);
     let func = args[0];
@@ -38,7 +27,7 @@ fn primitive_apply(
 
 fn primitive_expand(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -48,25 +37,21 @@ fn primitive_expand(
 
 fn primitive_equal(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     EvalResult::done(Value::Boolean(args[0].is_equal(interp, &args[1])))
 }
 
-fn primitive_eq(
-    _interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_eq(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     EvalResult::done(Value::Boolean(args[0] == args[1]))
 }
 
 fn primitive_error(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -76,25 +61,25 @@ fn primitive_error(
 
 fn primitive_with_exception_handler(
     interp: &Scheme,
-    env: Rc<RefCell<Env>>,
+    env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     let handler = args[0];
     let thunk = args[1];
-    match interp.apply(env.clone(), thunk, vec![]) {
+    match interp.apply(env, thunk, vec![]) {
         Ok(value) => EvalResult::done(value),
         Err(e) => {
             let (label, message) = e.get_infos();
             let string = interp.alloc_string(format!("[{}]: {}", label, message));
-            EvalResult::done(interp.apply(env.clone(), handler, vec![string.value()])?)
+            EvalResult::done(interp.apply(env, handler, vec![string.value()])?)
         }
     }
 }
 
 fn primitive_procedure_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -103,7 +88,7 @@ fn primitive_procedure_p(
 
 fn primitive_closure_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -112,7 +97,7 @@ fn primitive_closure_p(
 
 fn primitive_closure_body(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -125,7 +110,7 @@ fn primitive_closure_body(
 
 fn primitive_symbol_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);

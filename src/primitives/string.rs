@@ -1,7 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{
-    env::Env,
     heap::HeapObject,
     interp::Scheme,
     types::{EvalResult, Number, SchemeError, Value},
@@ -9,7 +6,7 @@ use crate::{
 
 fn primitive_string_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -18,7 +15,7 @@ fn primitive_string_p(
 
 fn primitive_make_string(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let mut fill_char = 32 as char;
@@ -36,7 +33,7 @@ fn primitive_make_string(
 
 fn primitive_string(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let mut buf = String::new();
@@ -49,7 +46,7 @@ fn primitive_string(
 
 fn primitive_string_to_list(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, _id: Object);
@@ -62,7 +59,7 @@ fn primitive_string_to_list(
 
 fn primitive_list_to_string(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, _id: Object);
@@ -76,7 +73,7 @@ fn primitive_list_to_string(
 
 fn primitive_string_length(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -86,7 +83,7 @@ fn primitive_string_length(
 
 fn primitive_string_ref(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
@@ -108,7 +105,7 @@ fn primitive_string_ref(
 
 fn primitive_string_set(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 3);
@@ -131,7 +128,7 @@ fn primitive_string_set(
 
 fn with_string<F>(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
     f: F,
 ) -> Result<EvalResult, SchemeError>
@@ -155,7 +152,7 @@ where
 
 fn primitive_string_eq(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| a == b)
@@ -163,7 +160,7 @@ fn primitive_string_eq(
 
 fn primitive_string_lt(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| a < b)
@@ -171,7 +168,7 @@ fn primitive_string_lt(
 
 fn primitive_string_gt(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| a > b)
@@ -179,7 +176,7 @@ fn primitive_string_gt(
 
 fn primitive_string_lte(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| a <= b)
@@ -187,7 +184,7 @@ fn primitive_string_lte(
 
 fn primitive_string_gte(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| a >= b)
@@ -195,7 +192,7 @@ fn primitive_string_gte(
 
 fn primitive_string_ci_eq(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| {
@@ -205,7 +202,7 @@ fn primitive_string_ci_eq(
 
 fn primitive_string_ci_lt(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| {
@@ -215,7 +212,7 @@ fn primitive_string_ci_lt(
 
 fn primitive_string_ci_lte(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| {
@@ -225,7 +222,7 @@ fn primitive_string_ci_lte(
 
 fn primitive_string_ci_gt(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| {
@@ -235,7 +232,7 @@ fn primitive_string_ci_gt(
 
 fn primitive_string_ci_gte(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     with_string(interp, _env, args, |a, b| {
@@ -245,7 +242,7 @@ fn primitive_string_ci_gte(
 
 fn primitive_string_append(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     let mut buf = String::new();
@@ -258,7 +255,7 @@ fn primitive_string_append(
 
 fn primitive_substring(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 3);
@@ -289,7 +286,7 @@ fn primitive_substring(
 
 fn primitive_string_copy(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -299,7 +296,7 @@ fn primitive_string_copy(
 
 fn primitive_string_fill(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);

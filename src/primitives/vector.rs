@@ -1,14 +1,11 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{
-    env::Env,
     interp::Scheme,
     types::{EvalResult, Number, SchemeError, Value},
 };
 
 fn primitive_vector_p(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -17,7 +14,7 @@ fn primitive_vector_p(
 
 fn primitive_make_vector(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_min_arity!(args, 1);
@@ -32,7 +29,7 @@ fn primitive_make_vector(
 
 fn primitive_vector(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     EvalResult::done(interp.alloc_vector(args).value())
@@ -40,7 +37,7 @@ fn primitive_vector(
 
 fn primitive_vector_length(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -52,7 +49,7 @@ fn primitive_vector_length(
 
 fn primitive_vector_ref(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
@@ -72,7 +69,7 @@ fn primitive_vector_ref(
 
 fn primitive_vector_set(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 3);
@@ -93,7 +90,7 @@ fn primitive_vector_set(
 
 fn primitive_vector_to_list(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
@@ -107,7 +104,7 @@ fn primitive_vector_to_list(
 
 fn primitive_list_to_vector(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, _id: Object);
@@ -120,7 +117,7 @@ fn primitive_list_to_vector(
 
 fn primitive_vector_fill(
     interp: &Scheme,
-    _env: Rc<RefCell<Env>>,
+    _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
