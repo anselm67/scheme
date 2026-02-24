@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::env::Env;
 use crate::heap::{self, Handle, Heap, PrimitiveFn};
-use crate::heap::{Apply, Closure, HeapObject, Keyword, OutputPort, Vector};
+use crate::heap::{Apply, Closure, HeapObject, Keyword, OutputPort};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
 use crate::types::{EvalResult, GcId, Number, SchemeError, SchemeObject, Value};
@@ -574,22 +574,19 @@ impl Scheme {
         }
     }
 
-    pub fn is_vector(&self, value: Value) -> Option<Ref<'_, Vector>> {
+    pub fn is_vector(&self, value: Value) -> Option<Rc<RefCell<Vec<Value>>>> {
         if let Some(id) = self.is_object(value) {
-            Ref::filter_map(self.heap.borrow(), |h| {
-                if let HeapObject::Vector(vector) = h.get(id) {
-                    Some(vector)
-                } else {
-                    None
-                }
-            })
-            .ok()
+            if let HeapObject::Vector(vector) = self.heap.borrow().get(id) {
+                Some(vector.clone())
+            } else {
+                None
+            }
         } else {
             None
         }
     }
 
-    pub fn to_vector(&self, value: Value) -> Result<Ref<'_, Vector>, SchemeError> {
+    pub fn to_vector(&self, value: Value) -> Result<Rc<RefCell<Vec<Value>>>, SchemeError> {
         if let Some(vector) = self.is_vector(value) {
             Ok(vector)
         } else {
@@ -798,9 +795,8 @@ impl Scheme {
                         }
                     }
                     HeapObject::Vector(vector) => {
-                        let data = vector.data.borrow();
                         let mut items = vec![self.handle(self.append)];
-                        for item in data.iter() {
+                        for item in vector.borrow().iter() {
                             if let Some(spliced) = self.is_splicing(*item)? {
                                 items.push(self.handle(spliced));
                             } else {

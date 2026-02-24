@@ -32,10 +32,6 @@ impl Closure {
     }
 }
 #[derive(Clone)]
-pub struct Vector {
-    pub data: RefCell<Vec<Value>>,
-}
-
 struct StringWriter {
     pub data: Rc<RefCell<Vec<u8>>>,
 }
@@ -59,8 +55,7 @@ pub struct OutputPort {
 pub enum HeapObject {
     FreeSlot(GcId),
     Pair(Value, Value),
-    // TODO => Rc
-    Vector(Vector),
+    Vector(Rc<RefCell<Vec<Value>>>),
     Symbol(String),
     // TODO => Rc
     String(String),
@@ -97,8 +92,8 @@ impl HeapObject {
                 acar.is_equal(interp, bcar) && acdr.is_equal(interp, bcdr)
             }
             (HeapObject::Vector(v1), HeapObject::Vector(v2)) => {
-                let d1 = v1.data.borrow();
-                let d2 = v2.data.borrow();
+                let d1 = v1.borrow();
+                let d2 = v2.borrow();
                 d1.len() == d2.len() && d1.iter().zip(d2.iter()).all(|(a, b)| a.is_equal(interp, b))
             }
             (HeapObject::Symbol(a), HeapObject::Symbol(b)) => a == b,
@@ -549,9 +544,7 @@ impl Heap {
 
     pub fn raw_alloc_vector(&mut self, items: &[Value]) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
-        self.objects[id] = HeapObject::Vector(Vector {
-            data: RefCell::new(items.to_vec()),
-        });
+        self.objects[id] = HeapObject::Vector(Rc::new(RefCell::new(items.to_vec())));
         Ok(self.handle_id(id))
     }
 
@@ -560,9 +553,9 @@ impl Heap {
         items: &[Handle],
     ) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
-        self.objects[id] = HeapObject::Vector(Vector {
-            data: RefCell::new(items.iter().map(|h| h.value()).collect()),
-        });
+        self.objects[id] = HeapObject::Vector(Rc::new(RefCell::new(
+            items.iter().map(|h| h.value()).collect(),
+        )));
         Ok(self.handle_id(id))
     }
 
@@ -786,9 +779,8 @@ impl SchemeObject for GcId {
                 write!(f, ")")
             }
             HeapObject::Vector(v) => {
-                let items = v.data.borrow();
                 write!(f, "#(")?;
-                for (i, e) in items.iter().enumerate() {
+                for (i, e) in v.borrow().iter().enumerate() {
                     if i > 0 {
                         write!(f, " ")?; // Add a space before every element EXCEPT the first
                     }
@@ -842,9 +834,8 @@ impl SchemeObject for GcId {
                 write!(f, ")")
             }
             HeapObject::Vector(v) => {
-                let items = v.data.borrow();
                 write!(f, "#(")?;
-                for (i, e) in items.iter().enumerate() {
+                for (i, e) in v.borrow().iter().enumerate() {
                     if i > 0 {
                         write!(f, " ")?; // Add a space before every element EXCEPT the first
                     }
@@ -880,8 +871,7 @@ impl SchemeObject for GcId {
                 cdr.mark(interp, marks);
             }
             HeapObject::Vector(v) => {
-                let data = v.data.borrow();
-                for item in data.iter() {
+                for item in v.borrow().iter() {
                     item.mark(interp, marks);
                 }
             }

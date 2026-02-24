@@ -42,9 +42,7 @@ fn primitive_vector_length(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let vector = interp.to_vector(args[0])?;
-    EvalResult::done(Value::Number(
-        Number::Int(vector.data.borrow().len() as i64),
-    ))
+    EvalResult::done(Value::Number(Number::Int(vector.borrow().len() as i64)))
 }
 
 fn primitive_vector_ref(
@@ -54,7 +52,7 @@ fn primitive_vector_ref(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     let vector = interp.to_vector(args[0])?;
-    let data = vector.data.borrow();
+    let data = vector.borrow();
     let index = interp.to_integer(args[1])?;
     if index >= 0 && index < data.len() as i64 {
         EvalResult::done(data[index as usize])
@@ -74,7 +72,7 @@ fn primitive_vector_set(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 3);
     let vector = interp.to_vector(args[0])?;
-    let mut data = vector.data.borrow_mut();
+    let mut data = vector.borrow_mut();
     let index = interp.to_integer(args[1])?;
     if index >= 0 && index < data.len() as i64 {
         data[index as usize] = args[2];
@@ -94,12 +92,8 @@ fn primitive_vector_to_list(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    let items: Vec<Value> = {
-        let vector = interp.to_vector(args[0])?;
-        let data = vector.data.borrow();
-        data.clone()
-    };
-    EvalResult::done(interp.alloc_list(&items).value())
+    let vector = interp.to_vector(args[0])?;
+    EvalResult::done(interp.alloc_list(&vector.borrow()).value())
 }
 
 fn primitive_list_to_vector(
@@ -122,8 +116,7 @@ fn primitive_vector_fill(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     let vector = interp.to_vector(args[0])?;
-    let mut data = vector.data.borrow_mut();
-    data.fill(args[1]);
+    vector.borrow_mut().fill(args[1]);
     EvalResult::done(args[1])
 }
 
