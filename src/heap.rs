@@ -184,7 +184,7 @@ impl Keyword {
             Keyword::DefineBang => {
                 check_arity!(args, 2);
                 let symbol = interp.to_object(args[0])?;
-                let value = interp.eval(env.clone(), args[1])?;
+                let value = interp.eval(env, args[1])?;
                 let env = interp.to_env(env);
                 env.borrow_mut().define(symbol, value);
                 Ok(EvalResult::Done(Value::Nil))
@@ -192,7 +192,7 @@ impl Keyword {
             Keyword::DefineSyntax => {
                 check_arity!(args, 2);
                 let symbol = interp.to_symbol(args[0])?;
-                let value = interp.eval(env.clone(), args[1])?;
+                let value = interp.eval(env, args[1])?;
                 let env = interp.to_env(env);
                 env.borrow_mut().define_syntax(symbol, value);
                 Ok(EvalResult::Done(Value::Nil))
@@ -241,7 +241,7 @@ impl Keyword {
             Keyword::SetBang => {
                 check_arity!(args, 2);
                 let var = args[0];
-                let value = interp.eval(env.clone(), args[1])?;
+                let value = interp.eval(env, args[1])?;
                 if let Value::Object(var_id) = var {
                     Env::set_bang(interp, env, var_id, value)?;
                     Ok(EvalResult::Done(value))
@@ -661,18 +661,18 @@ impl Apply for Value {
             }
             HeapObject::Closure(closure) => {
                 check_arity!(args, closure.params.len());
-                let new_env = Env::extend(closure.env.clone());
+                let new_env = Env::extend(closure.env);
                 for (param_id, arg_value) in closure.params.iter().zip(args.iter()) {
                     new_env.borrow_mut().define(*param_id, *arg_value);
                 }
-                let env_handle = interp.alloc_env(new_env.clone());
+                let env_handle = interp.alloc_env(new_env);
                 for expr in &closure.body {
                     interp.eval(env_handle.value(), *expr)?;
                 }
                 Ok(EvalResult::Continuation(env_handle.value(), closure.tail))
             }
             HeapObject::NaryClosure(closure) => {
-                let new_env = Env::extend(closure.env.clone());
+                let new_env = Env::extend(closure.env);
                 let mut index = 0;
                 if args.len() < closure.params.len() - 1 {
                     return Err(SchemeError::ArgCountError(format!(
@@ -732,11 +732,11 @@ impl SchemeObject for GcId {
                 } else {
                     // Regular function call with arg eval.
                     let arg_handles = interp.fold_list(cdr, Vec::new(), |mut acc, arg| {
-                        let value = interp.eval(env.clone(), arg)?;
+                        let value = interp.eval(env, arg)?;
                         acc.push(interp.handle(value));
                         Ok(acc)
                     })?;
-                    let func = interp.eval(env.clone(), car)?;
+                    let func = interp.eval(env, car)?;
                     func.apply(interp, env, arg_handles.iter().map(|h| h.value()).collect())
                 }
             }

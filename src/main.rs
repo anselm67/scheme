@@ -8,10 +8,7 @@ use scheme::interp::{Scheme, SchemeOptions};
 fn eval_expr(interp: &Scheme, expr: Value) {
     let expansion = interp.expand(expr);
     expansion
-        .and_then(|expanded| {
-            let env = interp.env.clone();
-            interp.eval(env, expanded.value())
-        })
+        .and_then(|expanded| interp.eval(interp.env, expanded.value()))
         .map(|value| {
             interp.flush_stdout();
             println!(" = {}", interp.display(value))

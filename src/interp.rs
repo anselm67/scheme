@@ -824,7 +824,7 @@ impl Scheme {
             Ok(acc)
         })?;
         let args: Vec<Value> = arg_handles.iter().map(|h| h.value()).collect();
-        let expansion = match func.apply(self, self.env.clone(), args)? {
+        let expansion = match func.apply(self, self.env, args)? {
             EvalResult::Done(value) => self.handle(value),
             EvalResult::Continuation(next_env, next_expr) => {
                 self.handle(self.eval(next_env, next_expr)?)

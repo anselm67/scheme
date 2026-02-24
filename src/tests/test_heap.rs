@@ -21,7 +21,7 @@ fn test_eval_symbol() {
     let symbol = heap.raw_intern_symbol("test-symbol").expect("test-symbol");
     drop(heap);
 
-    let result = interp.eval(interp.env.clone(), symbol.value());
+    let result = interp.eval(interp.env, symbol.value());
     assert!(
         matches!(result, Err(UnboundVariable(_))),
         "Evaluated result should be an UnboundVariable error"
@@ -31,7 +31,7 @@ fn test_eval_symbol() {
     let value = Value::Number(Number::Int(32));
     interp.define("test-symbol", value);
     assert!(
-        matches!(interp.eval(interp.env.clone(), symbol.value()), Ok(x) if x == value),
+        matches!(interp.eval(interp.env, symbol.value()), Ok(x) if x == value),
         "Evaluated symbol should return bound value"
     );
 }
@@ -43,7 +43,7 @@ fn test_eval_string() {
     let Value::Object(string_id) = string else {
         panic!("Expected Value::Object");
     };
-    let result = interp.eval(interp.env.clone(), string);
+    let result = interp.eval(interp.env, string);
     assert!(
         matches!(result, Ok(Value::Object(id)) if id == string_id),
         "Evaluated string should return the same object ID"
@@ -58,15 +58,12 @@ fn test_true_and_false_symbols() {
     let false_sym = interp.intern_symbol("#f").value();
 
     assert!(
-        matches!(
-            interp.eval(interp.env.clone(), true_sym),
-            Ok(Value::Boolean(true))
-        ),
+        matches!(interp.eval(interp.env, true_sym), Ok(Value::Boolean(true))),
         "#t should evaluate to Boolean(true)"
     );
     assert!(
         matches!(
-            interp.eval(interp.env.clone(), false_sym),
+            interp.eval(interp.env, false_sym),
             Ok(Value::Boolean(false))
         ),
         "#f should evaluate to Boolean(false)"

@@ -6,7 +6,7 @@ use crate::{
 
 fn eval_expr(interp: &Scheme, expr: Value) {
     interp.display(expr);
-    let result = interp.eval(interp.env.clone(), expr);
+    let result = interp.eval(interp.env, expr);
     match result {
         Ok(val) => println!("{}", interp.display(val)),
         Err(e) => eprintln!("Error: {:?}", e),
@@ -18,7 +18,7 @@ fn check_exprs(interp: &Scheme, inputs: &Vec<(&str, Value)>) {
         let mut parser = Parser::new(text.as_bytes());
         let expr = parser.read(&interp);
         match expr {
-            Ok(expr) => match interp.eval(interp.env.clone(), expr.value()) {
+            Ok(expr) => match interp.eval(interp.env, expr.value()) {
                 Ok(value) => assert_eq!(value, *expected),
                 Err(e) => panic!("Eval {} failed with error: {:?}", text, e),
             },
@@ -31,7 +31,7 @@ fn check_errors(interp: &Scheme, inputs: &Vec<(&str, SchemeError)>) {
     for (text, expected) in inputs {
         let mut parser = Parser::new(text.as_bytes());
         if let Ok(expr) = parser.read(&interp) {
-            match interp.eval(interp.env.clone(), expr.value()) {
+            match interp.eval(interp.env, expr.value()) {
                 Ok(_) => panic!("Failure was expected, but success happened!"),
                 Err(e) => assert_eq!(e, *expected),
             }
