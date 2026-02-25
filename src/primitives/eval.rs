@@ -131,6 +131,29 @@ fn primitive_symbol_p(
     EvalResult::done(Value::Boolean(interp.is_symbol(args[0]).is_some()))
 }
 
+fn primitive_symbol_to_string(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 1);
+    let name = interp.to_symbol_name(args[0])?;
+    let string = interp.alloc_string(name);
+    EvalResult::done(string.value())
+}
+
+fn primitive_string_to_symbol(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 1);
+    // TODO String requires some serious fixing.
+    let name = interp.to_string(args[0])?.to_string();
+    let symbol = interp.intern_symbol(&name);
+    EvalResult::done(symbol.value())
+}
+
 pub fn register(interp: &Scheme) {
     interp.define("#t", Value::Boolean(true));
     interp.define("#f", Value::Boolean(false));
@@ -146,4 +169,6 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("closure->body", primitive_closure_body);
     interp.define_primitive("macro->body", primitive_macro_body);
     interp.define_primitive("symbol?", primitive_symbol_p);
+    interp.define_primitive("symbol->string", primitive_symbol_to_string);
+    interp.define_primitive("string->symbol", primitive_string_to_symbol);
 }
