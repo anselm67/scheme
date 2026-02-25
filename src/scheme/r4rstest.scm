@@ -256,7 +256,7 @@
 (begin (begin))
 (begin (begin (begin (begin))))
 (SECTION 5 2 2)
-#;(test 45 'define
+(test 45 'define
       (let ((x 5))
 	(begin (begin (begin)
 		      (begin (begin (begin) (define foo (lambda (y) (bar x y)))
