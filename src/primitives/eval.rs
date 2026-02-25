@@ -108,6 +108,20 @@ fn primitive_closure_body(
     EvalResult::done(interp.alloc_list(&body).value())
 }
 
+fn primitive_macro_body(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 1);
+    let id = interp.to_object(args[0])?;
+    if let Some(value) = interp.get_macro(id) {
+        EvalResult::done(value)
+    } else {
+        Err(SchemeError::UnboundVariable(format!("macro not found.")))
+    }
+}
+
 fn primitive_symbol_p(
     interp: &Scheme,
     _env: Value,
@@ -130,5 +144,6 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("procedure?", primitive_procedure_p);
     interp.define_primitive("closure?", primitive_closure_p);
     interp.define_primitive("closure->body", primitive_closure_body);
+    interp.define_primitive("macro->body", primitive_macro_body);
     interp.define_primitive("symbol?", primitive_symbol_p);
 }
