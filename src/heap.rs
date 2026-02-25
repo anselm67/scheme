@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    check_arity,
+    check_arity, check_arity_range,
     env::Env,
     interp::Scheme,
     markset::MarkSet,
@@ -56,8 +56,9 @@ pub enum HeapObject {
     FreeSlot(GcId),
     Pair(Value, Value),
     Vector(Rc<RefCell<Vec<Value>>>),
+    // TODO String This should really be an Id to the String.
     Symbol(String),
-    // TODO => Rc
+    // TODO => RefCell?
     String(String),
     Primitive(PrimitiveFn),
     Closure(Box<Closure>),
@@ -169,10 +170,16 @@ impl Keyword {
     ) -> Result<EvalResult, SchemeError> {
         match keyword {
             Keyword::If => {
-                check_arity!(args, 3);
+                check_arity_range!(args, 2, 3);
                 let condition = interp.eval(env, args[0])?;
                 match condition {
-                    Value::Boolean(false) => Ok(EvalResult::Continuation(env, args[2])),
+                    Value::Boolean(false) => {
+                        if args.len() > 2 {
+                            Ok(EvalResult::Continuation(env, args[2]))
+                        } else {
+                            EvalResult::done(Value::Unbound)
+                        }
+                    }
                     _ => Ok(EvalResult::Continuation(env, args[1])),
                 }
             }
@@ -501,6 +508,19 @@ impl Heap {
             "Expected a Pair, but got a {}.",
             car.type_name()
         )));
+    }
+
+    pub fn setcar(&mut self, id: GcId, value: Value) -> Result<Value, SchemeError> {
+        match self.get_mut(id) {
+            HeapObject::Pair(car, _) => {
+                *car = value;
+                Ok(value)
+            }
+            obj => Err(SchemeError::TypeError(format!(
+                "Expected a Pair, but got a {} instead.",
+                obj.type_name()
+            ))),
+        }
     }
 
     pub fn setcdr(&mut self, id: GcId, value: Value) -> Result<Value, SchemeError> {
