@@ -764,13 +764,31 @@ impl Scheme {
         }
     }
 
-    pub fn expand_quasiquote(&self, expr: Value) -> Result<Handle, SchemeError> {
+    fn expand_quasiquote(&self, expr: Value, depth: u32) -> Result<Handle, SchemeError> {
         match expr {
             Value::Object(id) => {
                 let obj = { self.heap.borrow().get(id).clone() };
                 match obj {
                     HeapObject::Pair(car, cdr) if car == self.unquote => {
-                        Ok(self.handle(self.to_car(cdr)?))
+                        let inner = self.to_car(cdr)?;
+                        if depth == 0 {
+                            Ok(self.handle(inner))
+                        } else {
+                            let expansion = self.expand_quasiquote(inner, depth - 1)?;
+                            Ok(self.alloc_list_from_handles(&[
+                                self.handle(self.list),
+                                self.quote(self.unquote)?,
+                                expansion,
+                            ]))
+                        }
+                    }
+                    HeapObject::Pair(car, cdr) if car == self.quasiquote => {
+                        let expansion = self.expand_quasiquote(self.to_car(cdr)?, depth + 1)?;
+                        Ok(self.alloc_list_from_handles(&[
+                            self.handle(self.list),
+                            self.quote(self.quasiquote)?,
+                            expansion,
+                        ]))
                     }
                     HeapObject::Pair(..) => {
                         let mut p = expr;
@@ -783,13 +801,15 @@ impl Scheme {
                                 } else if let Some(spliced) = self.is_splicing(car)? {
                                     args.push(self.handle(spliced))
                                 } else {
-                                    args.push(self.list_from_handle(self.expand_quasiquote(car)?)?);
+                                    args.push(
+                                        self.list_from_handle(self.expand_quasiquote(car, depth)?)?,
+                                    );
                                 }
                                 p = cdr;
                             } else if p == Value::Nil {
                                 return Ok(self.alloc_list_from_handles(&args));
                             } else {
-                                args.push(self.expand_quasiquote(p)?);
+                                args.push(self.expand_quasiquote(p, depth)?);
                                 return Ok(self.alloc_list_from_handles(&args));
                             }
                         }
@@ -800,7 +820,9 @@ impl Scheme {
                             if let Some(spliced) = self.is_splicing(*item)? {
                                 items.push(self.handle(spliced));
                             } else {
-                                items.push(self.list_from_handle(self.expand_quasiquote(*item)?)?);
+                                items.push(
+                                    self.list_from_handle(self.expand_quasiquote(*item, depth)?)?,
+                                );
                             }
                         }
                         let items = self.alloc_list_from_handles(&items);
@@ -837,11 +859,11 @@ impl Scheme {
 
     pub fn expand(&self, expr: Value) -> Result<Handle, SchemeError> {
         if let Some((car, cdr)) = self.is_pair(expr) {
-            if let Value::Object(id) = car
-                && id == 8
-            {
-                /* Keyword::DefineSyntax: no macro expansion in macro definition ! */
+            /* if car == self.define_syntax {
                 Ok(self.handle(expr))
+            } else */
+            if car == self.quasiquote {
+                self.expand_quasiquote(self.to_car(cdr)?, 0)
             } else if let Value::Object(id) = car
                 && let Some(func) = self.get_macro(id)
             {

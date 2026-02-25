@@ -228,11 +228,9 @@ impl Keyword {
                 check_arity!(args, 1);
                 Ok(EvalResult::Done(args[0]))
             }
-            Keyword::QuasiQuote => {
-                check_arity!(args, 1);
-                let expr = interp.expand_quasiquote(args[0])?;
-                Ok(EvalResult::Done(interp.eval(env, expr.value())?))
-            }
+            Keyword::QuasiQuote => Err(SchemeError::ImplementationError(format!(
+                "Keyword::QuasiQuote should never be evaluated, missing a call to expand()?"
+            ))),
             Keyword::SetBang => {
                 check_arity!(args, 2);
                 let var = args[0];
