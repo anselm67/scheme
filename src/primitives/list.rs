@@ -79,7 +79,7 @@ fn primitive_pair_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_list(args[0])))
+    EvalResult::done(Value::Boolean(interp.is_pair(args[0]).is_some()))
 }
 
 fn primitive_list_p(
