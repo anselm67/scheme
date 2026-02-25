@@ -837,11 +837,10 @@ impl Scheme {
     }
 
     fn expand_macro(&self, func: Value, args: Value) -> Result<Handle, SchemeError> {
-        let arg_handles = self.fold_list(args, Vec::new(), |mut acc, arg| {
-            acc.push(self.expand(arg)?);
+        let args = self.fold_list(args, Vec::new(), |mut acc, arg| {
+            acc.push(arg);
             Ok(acc)
         })?;
-        let args: Vec<Value> = arg_handles.iter().map(|h| h.value()).collect();
         let expansion = match func.apply(self, self.env, args)? {
             EvalResult::Done(value) => self.handle(value),
             EvalResult::Continuation(next_env, next_expr) => {
@@ -859,9 +858,6 @@ impl Scheme {
 
     pub fn expand(&self, expr: Value) -> Result<Handle, SchemeError> {
         if let Some((car, cdr)) = self.is_pair(expr) {
-            /* if car == self.define_syntax {
-                Ok(self.handle(expr))
-            } else */
             if car == self.quasiquote {
                 self.expand_quasiquote(self.to_car(cdr)?, 0)
             } else if let Value::Object(id) = car
