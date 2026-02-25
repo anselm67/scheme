@@ -1,6 +1,7 @@
 ; macros.scm
 ; This file is bundled with the interpretor and defines all the well known macros
 ; and functions that aren't defined as primitives.
+; Order of the definitions matters a *lot*, you've been warned!
 
 (define! cadr (lambda (l) (car (cdr l))))
 (define! cddr (lambda (l) (cdr (cdr l))))
@@ -11,6 +12,8 @@
 (define! cddar (lambda (l) (cdr (cdr (car l)))))
 (define! caddar (lambda (l) (car (cdr (cdr (car l))))))
 
+(define! eqv? eq?)
+
 (define-syntax define 
     (lambda (name_and_params . body) 
         (if (symbol? name_and_params)
@@ -18,6 +21,8 @@
             `(define! ,(car name_and_params) (lambda ,(cdr name_and_params) ,@body)))
     )
 )
+
+(define (not x) (eq? #f x))
 
 (define (map_one_ fn list) 
     (if (null? list) 
@@ -64,8 +69,6 @@
     )
 )
 
-(define-syntax begin (lambda exprs `((lambda () ,@exprs))))
-
 (define-syntax unless 
     (lambda (cond . body) `(if ,cond () (begin ,@body)))
 )
@@ -95,21 +98,54 @@
         `(with-exception-handler ,handler (lambda () ,@body)))
 )
 
+; This simple version of begin is just enough to define cond.
+; A better version follows...
+
+(define-syntax begin 
+    (lambda exprs 
+        (if (null? exprs)
+            `'*unbound*
+            `((lambda () ,@exprs))))
+)
+
 (define-syntax cond
     (lambda clauses
         (if (null? clauses)
             () 
-            (if (eq? '=> (cadar clauses)) 
-                `(let ((_test ,(caar clauses))
-                       (_proc ,(caddar clauses)))
-                    (if _test (_proc _test) (cond ,@(cdr clauses))))
-                (if (eq? 'else (caar clauses))
-                    `(begin ,@(cdar clauses))
-                    `(let ((test_ ,(caar clauses)))
-                        (if test_
-                            (begin ,@(cdar clauses))
-                            (cond ,@(cdr clauses)))))))
+            (if (null? (cdar clauses))
+                `,(caar clauses)
+                (if (eq? '=> (cadar clauses)) 
+                    `(let ((_test ,(caar clauses))
+                        (_proc ,(caddar clauses)))
+                        (if _test (_proc _test) (cond ,@(cdr clauses))))
+                    (if (eq? 'else (caar clauses))
+                        `(begin ,@(cdar clauses))
+                        `(let ((test_ ,(caar clauses)))
+                            (if test_
+                                (begin ,@(cdar clauses))
+                                (cond ,@(cdr clauses))))))))
     )
+)
+
+(define (flatten-begin expr)
+  (cond ((null? expr) '())
+        ;; If the element is a (begin ...), unwrap it and append its flattened contents
+        ((and (pair? (car expr)) (eq? (car (car expr)) 'begin))
+         (append (flatten-begin (cdr (car expr))) ; Flatten the inside of the begin
+                 (flatten-begin (cdr expr))))     ; Continue with the rest of the list
+        ;; If the element is just an empty (begin), skip it
+        ((eq? (car expr) 'begin) 
+         (flatten-begin (cdr expr)))
+        ;; Otherwise, keep the element and move on
+        (else 
+         (cons (car expr) (flatten-begin (cdr expr))))))
+
+(define-syntax begin
+    (lambda exprs 
+        (let ((body (flatten-begin exprs)))
+            (cond ((null? body) ())
+                ((pair? (cdr body)) `((lambda () ,@body)))
+                (else `,(car body)))))
 )
 
 (define (assert-equal object value)
@@ -143,31 +179,11 @@
             (loop (map-cdrs lists) (cons (apply proc (map-cars lists)) acc))))
 )
  
- ; TODO Proper definition of write and display.
 (define (newline) (display "\n"))
 
 (define (boolean? stuff) (or (eq? stuff #t) (eq? stuff #f)))
 
 (define! for-each map)
-
-(define (not x) (eq? #f x))
-
-(define (assv obj alist) 
-    (let loop ((lst alist))
-        (if (null? lst) #f
-            (if (eq? obj (caar lst))
-                (car lst)
-                (loop (cdr lst))))
-    )
-)
-
-(define (memq obj lst)
-    (if (null? lst)
-        #f
-        (if (eq? obj (car lst))
-            lst
-            (memq obj (cdr lst))))
-)
 
 (define-syntax case
     (lambda (expr . clauses)
@@ -186,7 +202,23 @@
 (define (zero? num) (= num 0))
 (define (negative? num) (< num 0))
 (define (positive? num) (> num 0))
+(define (complex? num) #f)
+(define (real? num) (number? num))
+(define (rational? num) (number? num))
+(define (exact? num) (integer? num))
+(define (inexact? num) (not (integer? num)))
+(define (even? n) (zero? (% n 2)))
+(define (odd? n) (not (even? n)))
+(define lcm (lambda args
+    (if (null? args) 
+        1
+        (let ((a (car args)))
+            (if (null? (cdr args))
+                (abs a)
+                (/ (abs (* a (cadr args))) (gcd a (cadr args)))))))
+)
 (define (abs num) (if (negative? num) (- num) num))
+(define! remainder %)
 
 (define-syntax do  
     (lambda (var-init-steps test-expr . body)
@@ -198,4 +230,55 @@
         )
     )
 )
+
+(define (list-ref lst pos)
+    (cond 
+        ((< pos 0) (error "Invalid list index."))
+        ((= pos 0) (car lst))
+        (else (list-ref (cdr lst) (- pos 1)))))
+
+(define (last lst) 
+    (if (null? (cdr lst)) (car lst) (last (cdr lst)))
+)
+
+(define (member item lst) 
+    (debug "item: " item ", lst: " lst)
+    (cond ((null? lst) #f)
+        ((equal? item (car lst)) (cdr lst))
+        (else (member item (cdr lst)))
+    )
+)
+
+(define (memv item lst) 
+    (cond ((null? lst) #f)
+        ((equal? item (car lst)) (cdr lst))
+        (else (memv item (cdr lst)))
+    )
+)
+
+(define (memq item lst)
+    (cond ((null? lst) #f)
+        ((eq? item (car lst)) (cdr lst))
+        (else (memq item (cdr lst))))
+)
+
+(define (assoc item lst) 
+    (cond ((null? lst) #f)
+        ((equal? item (caar lst)) (car lst))
+        (else (assoc item (cdr lst))))
+)
+
+(define (assv item lst) 
+    (cond ((null? lst) #f)
+        ((eqv? item (caar lst)) (car lst))
+        (else (assv item (cdr lst))))
+)
+
+(define (assq item lst) 
+    (cond ((null? lst) #f)
+        ((eq? item (caar lst)) (car lst))
+        (else (assq item (cdr lst))))
+)
+
+
 
