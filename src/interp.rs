@@ -72,7 +72,7 @@ pub struct SchemeOptions {
 impl SchemeOptions {
     pub fn new() -> Self {
         Self {
-            heap_size: 16 * 1024,
+            heap_size: 128 * 1024,
             init_scheme: true,
             debug_macro: false,
         }
@@ -385,6 +385,10 @@ impl Scheme {
 
     pub fn last(&self, car: Value) -> Result<Value, SchemeError> {
         self.heap.borrow().last(car)
+    }
+
+    pub fn setcar(&self, id: GcId, value: Value) -> Result<Value, SchemeError> {
+        self.heap.borrow_mut().setcar(id, value)
     }
 
     pub fn setcdr(&self, id: GcId, value: Value) -> Result<Value, SchemeError> {
@@ -716,6 +720,17 @@ impl Scheme {
         let id = self.to_object(value)?;
         match self.heap.borrow().get(id) {
             HeapObject::Symbol(_) => Ok(id),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected a Symbol, but got a {}.",
+                value.type_name()
+            ))),
+        }
+    }
+
+    pub fn to_symbol_name(&self, value: Value) -> Result<String, SchemeError> {
+        let id = self.to_object(value)?;
+        match self.heap.borrow().get(id) {
+            HeapObject::Symbol(name) => Ok(name.clone()),
             _ => Err(SchemeError::TypeError(format!(
                 "Expected a Symbol, but got a {}.",
                 value.type_name()
