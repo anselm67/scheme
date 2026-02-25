@@ -19,9 +19,13 @@ pub struct Scheme {
     input_stack: RefCell<Vec<Value>>,
     output_stack: RefCell<Vec<Value>>,
 
+    // Misc control flags
+    pub debug_macro: bool,
+
     // Some symbols we want to keeep track of:
     append: Value,
     list: Value,
+    quote: Value,
     quasiquote: Value,
     unquote: Value,
     unquote_splicing: Value,
@@ -62,13 +66,15 @@ impl<'a> std::fmt::Display for OutputWrapper<'a> {
 pub struct SchemeOptions {
     heap_size: usize,
     init_scheme: bool,
+    debug_macro: bool,
 }
 
 impl SchemeOptions {
     pub fn new() -> Self {
         Self {
-            heap_size: 8192,
+            heap_size: 16 * 1024,
             init_scheme: true,
+            debug_macro: false,
         }
     }
     pub fn set_init_scheme(mut self, init: bool) -> Self {
@@ -78,6 +84,11 @@ impl SchemeOptions {
 
     pub fn set_heap_size(mut self, heap_size: usize) -> Self {
         self.heap_size = heap_size;
+        self
+    }
+
+    pub fn set_debug_macro(mut self, debug_macro: bool) -> Self {
+        self.debug_macro = debug_macro;
         self
     }
 }
@@ -95,11 +106,12 @@ impl Scheme {
             .raw_alloc_env(Rc::new(RefCell::new(global_env)))
             .expect("Failed to allocate global env.");
 
-        let (append, list, quasiquote, unquote, unquote_splicing, apply, vector) = {
+        let (append, list, quote, quasiquote, unquote, unquote_splicing, apply, vector) = {
             let mut heap = heap_handle.borrow_mut();
             (
                 heap.raw_intern_symbol("append"),
                 heap.raw_intern_symbol("list"),
+                heap.raw_intern_symbol("quote"),
                 heap.raw_intern_symbol("quasiquote"),
                 heap.raw_intern_symbol("unquote"),
                 heap.raw_intern_symbol("unquote-splicing"),
@@ -113,8 +125,10 @@ impl Scheme {
             input_stack: RefCell::new(vec![]),
             output_stack: RefCell::new(vec![]),
 
+            debug_macro: options.debug_macro,
             list: list.expect("list symbol").value(),
             append: append.expect("append symbol").value(),
+            quote: quote.expect("quote symbol").value(),
             quasiquote: quasiquote.expect("quasiquote symbol").value(),
             unquote: unquote.expect("unquote symbol").value(),
             unquote_splicing: unquote_splicing.expect("unquote-splicing symbol").value(),
@@ -850,7 +864,7 @@ impl Scheme {
         Ok(expansion)
     }
 
-    fn get_macro(&self, id: GcId) -> Option<Value> {
+    pub fn get_macro(&self, id: GcId) -> Option<Value> {
         // This function's purpose is to limit the scope of env borrowing.
         let env = self.to_env(self.env);
         env.borrow().macros.get(&id).cloned()
@@ -858,12 +872,21 @@ impl Scheme {
 
     pub fn expand(&self, expr: Value) -> Result<Handle, SchemeError> {
         if let Some((car, cdr)) = self.is_pair(expr) {
-            if car == self.quasiquote {
+            if car == self.quote {
+                // We never expand quoted expressions!
+                Ok(self.handle(expr))
+            } else if car == self.quasiquote {
                 self.expand_quasiquote(self.to_car(cdr)?, 0)
             } else if let Value::Object(id) = car
                 && let Some(func) = self.get_macro(id)
             {
+                if self.debug_macro {
+                    println!("expand macro {}", self.display(cdr));
+                }
                 let expansion = self.expand_macro(func, cdr)?;
+                if self.debug_macro {
+                    println!("expansion {}", self.display(expansion.value()));
+                }
                 Ok(self.expand(expansion.value())?)
             } else {
                 let mut updated = false;

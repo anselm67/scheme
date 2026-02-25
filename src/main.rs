@@ -8,7 +8,12 @@ use scheme::interp::{Scheme, SchemeOptions};
 fn eval_expr(interp: &Scheme, expr: Value) {
     let expansion = interp.expand(expr);
     expansion
-        .and_then(|expanded| interp.eval(interp.env, expanded.value()))
+        .and_then(|expanded| {
+            if interp.debug_macro {
+                println!("expanded => {}", interp.display(expanded.value()));
+            }
+            interp.eval(interp.env, expanded.value())
+        })
         .map(|value| {
             interp.flush_stdout();
             println!(" = {}", interp.display(value))
@@ -64,6 +69,10 @@ struct Arg {
     #[arg(long = "no-init", default_value_t = true, action=clap::ArgAction::SetFalse)]
     init: bool,
 
+    /// Debug macro by printing expressions before / after expansion.
+    #[arg(long)]
+    debug_macro: bool,
+
     /// Initial heap size in number of objects.
     #[arg(short = 's', long, default_value_t = 8192)]
     heap_size: usize,
@@ -73,6 +82,7 @@ fn main() {
     let arg = <Arg as clap::Parser>::parse();
     let options = SchemeOptions::new()
         .set_init_scheme(arg.init)
+        .set_debug_macro(arg.debug_macro)
         .set_heap_size(arg.heap_size);
 
     let interp = Scheme::new(&options);
