@@ -56,49 +56,81 @@ fn primitive_rem(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalRe
     EvalResult::done(Value::Number(*a % *b))
 }
 
-fn primitive_number_eq(
-    _interp: &Scheme,
+fn primitive_quotient(
+    interp: &Scheme,
     _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
-    extract_args!(args, 2, a: Number, b: Number);
-    EvalResult::done(Value::Boolean(a == b))
+    check_arity!(args, 2);
+    let a = interp.to_integer(args[0])?;
+    let b = interp.to_integer(args[1])?;
+    EvalResult::done(Value::Number(Number::Int(a / b)))
+}
+
+fn primitive_modulo(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 2);
+    let a = interp.to_integer(args[0])?;
+    let b = interp.to_integer(args[1])?;
+    EvalResult::done(Value::Number(Number::Int(a.rem_euclid(b))))
+}
+
+fn with_numbers<F>(interp: &Scheme, args: &[Value], cmp: F) -> Result<EvalResult, SchemeError>
+where
+    F: Fn(Number, Number) -> bool,
+{
+    check_min_arity!(args, 2);
+    let mut a = interp.to_number(args[0])?;
+    for arg in &args[1..] {
+        let b = interp.to_number(*arg)?;
+        if !cmp(a, b) {
+            return EvalResult::done(Value::Boolean(false));
+        }
+        a = b;
+    }
+    return EvalResult::done(Value::Boolean(true));
+}
+fn primitive_number_eq(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    with_numbers(interp, args, |a, b| a == b)
 }
 
 fn primitive_number_lt(
-    _interp: &Scheme,
+    interp: &Scheme,
     _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
-    extract_args!(args, 2, a: Number, b: Number);
-    EvalResult::done(Value::Boolean(a < b))
+    with_numbers(interp, args, |a, b| a < b)
 }
 
 fn primitive_number_lte(
-    _interp: &Scheme,
+    interp: &Scheme,
     _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
-    extract_args!(args, 2, a: Number, b: Number);
-    EvalResult::done(Value::Boolean(a <= b))
+    with_numbers(interp, args, |a, b| a <= b)
 }
 
 fn primitive_number_gt(
-    _interp: &Scheme,
+    interp: &Scheme,
     _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
-    extract_args!(args, 2, a: Number, b: Number);
-    EvalResult::done(Value::Boolean(a > b))
+    with_numbers(interp, args, |a, b| a > b)
 }
 
 fn primitive_number_gte(
-    _interp: &Scheme,
+    interp: &Scheme,
     _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
-    extract_args!(args, 2, a: Number, b: Number);
-    EvalResult::done(Value::Boolean(a >= b))
+    with_numbers(interp, args, |a, b| a >= b)
 }
 
 fn primitive_number_p(
@@ -171,6 +203,25 @@ fn primitive_sqt(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalRes
     EvalResult::done(Value::Number(value.sqrt()))
 }
 
+fn gcd_two(a: i64, b: i64) -> i64 {
+    let mut a = a.abs();
+    let mut b = b.abs();
+    while b != 0 {
+        a %= b;
+        std::mem::swap(&mut a, &mut b);
+    }
+    a
+}
+
+fn primitive_gcd(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
+    let mut result = 0;
+    for arg in args {
+        let n = interp.to_integer(*arg)?;
+        result = gcd_two(result, n);
+    }
+    EvalResult::done(Value::Number(Number::Int(result)))
+}
+
 pub fn register(interp: &Scheme) {
     interp.define_primitive("number?", primitive_number_p);
     interp.define_primitive("integer?", primitive_integer_p);
@@ -180,6 +231,8 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("*", primitive_mul);
     interp.define_primitive("/", primitive_div);
     interp.define_primitive("%", primitive_rem);
+    interp.define_primitive("quotient", primitive_quotient);
+    interp.define_primitive("modulo", primitive_modulo);
     interp.define_primitive("=", primitive_number_eq);
     interp.define_primitive("<", primitive_number_lt);
     interp.define_primitive(">", primitive_number_gt);
@@ -187,5 +240,6 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive(">=", primitive_number_gte);
     interp.define_primitive("max", primitive_number_max);
     interp.define_primitive("min", primitive_number_min);
+    interp.define_primitive("gcd", primitive_gcd);
     interp.define_primitive("sqt", primitive_sqt);
 }
