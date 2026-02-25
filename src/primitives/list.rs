@@ -102,7 +102,7 @@ fn primitive_null_p(
     EvalResult::done(Value::Boolean(interp.is_null(args[0])))
 }
 
-fn primitive_list_cons(
+fn primitive_cons(
     interp: &Scheme,
     _env: Value,
     args: &[Value],
@@ -111,7 +111,7 @@ fn primitive_list_cons(
     EvalResult::done(interp.alloc_pair(args[0], args[1]).value())
 }
 
-fn primitive_list_car(
+fn primitive_car(
     interp: &Scheme,
     _env: Value,
     args: &[Value],
@@ -121,7 +121,7 @@ fn primitive_list_car(
     EvalResult::done(car)
 }
 
-fn primitive_list_cdr(
+fn primitive_cdr(
     interp: &Scheme,
     _env: Value,
     args: &[Value],
@@ -131,6 +131,28 @@ fn primitive_list_cdr(
     EvalResult::done(cdr)
 }
 
+fn primitive_set_car(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 2);
+    let pair = interp.to_object(args[0])?;
+    interp.setcar(pair, args[1])?;
+    EvalResult::done(Value::Nil)
+}
+
+fn primitive_set_cdr(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 2);
+    let pair = interp.to_object(args[0])?;
+    interp.setcdr(pair, args[1])?;
+    EvalResult::done(Value::Nil)
+}
+
 pub fn register(interp: &Scheme) {
     interp.define_primitive("list", primitive_list);
     interp.define_primitive("append", primitive_append);
@@ -138,7 +160,9 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("pair?", primitive_pair_p);
     interp.define_primitive("list?", primitive_list_p);
     interp.define_primitive("null?", primitive_null_p);
-    interp.define_primitive("cons", primitive_list_cons);
-    interp.define_primitive("car", primitive_list_car);
-    interp.define_primitive("cdr", primitive_list_cdr);
+    interp.define_primitive("cons", primitive_cons);
+    interp.define_primitive("car", primitive_car);
+    interp.define_primitive("cdr", primitive_cdr);
+    interp.define_primitive("set-car!", primitive_set_car);
+    interp.define_primitive("set-cdr!", primitive_set_cdr);
 }
