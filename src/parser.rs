@@ -173,7 +173,7 @@ impl<R: Read> Parser<R> {
                 break;
             }
         }
-        return Ok(interp.lookup(&token));
+        return Ok(interp.lookup(&token.to_lowercase()));
     }
 
     fn parse_symbol(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
