@@ -16,6 +16,10 @@ use crate::{
 
 pub type PrimitiveFn = fn(&Scheme, env: Value, &[Value]) -> Result<EvalResult, SchemeError>;
 
+pub struct Primitive {
+    func: PrimitiveFn,
+    name: Rc<str>,
+}
 #[derive(Clone)]
 pub struct Closure {
     params: Box<[GcId]>,
@@ -56,9 +60,9 @@ pub enum HeapObject {
     FreeSlot(GcId),
     Pair(Value, Value),
     Vector(Rc<RefCell<Vec<Value>>>),
-    Symbol(String),
+    Symbol(Rc<str>),
     String(Rc<RefCell<String>>),
-    Primitive(PrimitiveFn),
+    Primitive(Rc<Primitive>),
     Closure(Box<Closure>),
     NaryClosure(Box<Closure>),
     InputPort(Rc<RefCell<Option<Box<dyn BufRead>>>>),
@@ -321,7 +325,7 @@ impl Handle {
 
 pub struct Heap {
     objects: Vec<HeapObject>,
-    symbols: HashMap<String, GcId>,
+    symbols: HashMap<Rc<str>, GcId>,
     protected: Rc<RefCell<HashMap<GcId, usize>>>,
     size: usize,
     free_slot: usize,
@@ -408,47 +412,47 @@ impl Heap {
     fn intern_special_keywwords(&mut self) {
         let if_id = self.raw_intern_symbol("if");
         assert!(
-            if_id.expect("init symbol").id() == Keyword::If as usize,
+            if_id.expect("init symbol").1.id() == Keyword::If as usize,
             "Keyword 'if' should have GcId 0"
         );
         let define_id = self.raw_intern_symbol("define!");
         assert!(
-            define_id.expect("init symbol").id() == Keyword::DefineBang as usize,
+            define_id.expect("init symbol").1.id() == Keyword::DefineBang as usize,
             "Keyword 'define!' should have GcId 1"
         );
         let lambda_id = self.raw_intern_symbol("lambda");
         assert!(
-            lambda_id.expect("init symbol").id() == Keyword::Lambda as usize,
+            lambda_id.expect("init symbol").1.id() == Keyword::Lambda as usize,
             "Keyword 'lambda' should have GcId 2"
         );
         let quote_id = self.raw_intern_symbol("quote");
         assert!(
-            quote_id.expect("init symbol").id() == Keyword::Quote as usize,
+            quote_id.expect("init symbol").1.id() == Keyword::Quote as usize,
             "Keyword 'quote' should have GcId 3"
         );
         let true_id = self.raw_intern_symbol("#t");
         assert!(
-            true_id.expect("init symbol").id() == Keyword::True as usize,
+            true_id.expect("init symbol").1.id() == Keyword::True as usize,
             "Keyword '#t' should have GcId 4"
         );
         let false_id = self.raw_intern_symbol("#f");
         assert!(
-            false_id.expect("init symbol").id() == Keyword::False as usize,
+            false_id.expect("init symbol").1.id() == Keyword::False as usize,
             "Keyword '#f' should have GcId 5"
         );
         let set_bang_id = self.raw_intern_symbol("set!");
         assert!(
-            set_bang_id.expect("init symbol").id() == Keyword::SetBang as usize,
+            set_bang_id.expect("init symbol").1.id() == Keyword::SetBang as usize,
             "Keyword 'set!' should have GcId 6"
         );
         let quasiquote_id = self.raw_intern_symbol("quasiquote");
         assert!(
-            quasiquote_id.expect("init symbol").id() == Keyword::QuasiQuote as usize,
+            quasiquote_id.expect("init symbol").1.id() == Keyword::QuasiQuote as usize,
             "Keyword 'quasiquote' should have GcId 7"
         );
         let define_syntax_id = self.raw_intern_symbol("define-syntax");
         assert!(
-            define_syntax_id.expect("init symbol").id() == Keyword::DefineSyntax as usize,
+            define_syntax_id.expect("init symbol").1.id() == Keyword::DefineSyntax as usize,
             "Keyword 'define-syntax' should have GcId 8"
         );
     }
@@ -465,14 +469,15 @@ impl Heap {
         &mut self.objects[id]
     }
 
-    pub fn raw_intern_symbol(&mut self, name: &str) -> Result<Handle, SchemeError> {
-        if let Some(&id) = self.symbols.get(name) {
-            Ok(self.handle_id(id))
+    pub fn raw_intern_symbol(&mut self, name: &str) -> Result<(Rc<str>, Handle), SchemeError> {
+        if let Some((name, &id)) = self.symbols.get_key_value(name) {
+            Ok((name.clone(), self.handle_id(id)))
         } else {
             let id: GcId = self.next_id()?;
-            self.objects[id] = HeapObject::Symbol(name.to_string());
-            self.symbols.insert(name.to_string(), id);
-            Ok(self.handle_id(id))
+            let name: Rc<str> = Rc::from(name);
+            self.objects[id] = HeapObject::Symbol(name.clone());
+            self.symbols.insert(name.clone(), id);
+            Ok((name, self.handle_id(id)))
         }
     }
 
@@ -540,9 +545,16 @@ impl Heap {
         Ok(self.handle_id(id))
     }
 
-    pub fn raw_alloc_primitive(&mut self, func: PrimitiveFn) -> Result<Handle, SchemeError> {
+    pub fn raw_alloc_primitive(
+        &mut self,
+        name: Rc<str>,
+        func: PrimitiveFn,
+    ) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
-        self.objects[id] = HeapObject::Primitive(func);
+        self.objects[id] = HeapObject::Primitive(Rc::new(Primitive {
+            name: name.clone(),
+            func,
+        }));
         Ok(self.handle_id(id))
     }
 
@@ -706,7 +718,7 @@ impl Apply for Value {
                 }
                 Ok(EvalResult::Continuation(env_handle.value(), closure.tail))
             }
-            HeapObject::Primitive(pr) => Ok(pr(interp, env, &args)?),
+            HeapObject::Primitive(pr) => Ok((pr.func)(interp, env, &args)?),
             HeapObject::FreeSlot(_) => {
                 panic!("Attempt to apply a FreeSlot!");
             }
@@ -815,7 +827,7 @@ impl SchemeObject for GcId {
                 })?;
                 write!(f, "{}", "\"")
             }
-            HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
+            HeapObject::Primitive(pr) => write!(f, "<{}>", pr.name),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
             HeapObject::InputPort(_) => write!(f, "<input-port {}>", id),
@@ -861,7 +873,7 @@ impl SchemeObject for GcId {
             }
             HeapObject::Symbol(s) => write!(f, "{}", s),
             HeapObject::String(s) => write!(f, "{}", s.borrow()),
-            HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
+            HeapObject::Primitive(pr) => write!(f, "<{:}\\>", pr.name),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
             HeapObject::InputPort(_) => write!(f, "<input-port {}>", id),

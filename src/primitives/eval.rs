@@ -148,16 +148,15 @@ fn primitive_string_to_symbol(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    // TODO String requires some serious fixing.
     let name = interp.to_string(args[0])?;
     let name = name.borrow();
-    let symbol = interp.intern_symbol(&name);
+    let (_, symbol) = interp.intern_symbol(&name);
     EvalResult::done(symbol.value())
 }
 
 pub fn register(interp: &Scheme) {
-    interp.define("#t", Value::Boolean(true));
-    interp.define("#f", Value::Boolean(false));
+    interp.define_from_string("#t", Value::Boolean(true));
+    interp.define_from_string("#f", Value::Boolean(false));
     interp.define_primitive("eval", primitive_eval);
     interp.define_primitive("apply", primitive_apply);
     interp.define_primitive("expand", primitive_expand);

@@ -7,8 +7,8 @@ use crate::types::{Number, Value};
 fn test_intern_symbol() {
     let mut heap = Heap::new(128);
 
-    let sym1 = heap.raw_intern_symbol("test").expect("test").id();
-    let sym2 = heap.raw_intern_symbol("test").expect("test").id();
+    let sym1 = heap.raw_intern_symbol("test").expect("test").1.id();
+    let sym2 = heap.raw_intern_symbol("test").expect("test").1.id();
 
     assert_eq!(sym1, sym2, "Interned symbols should be the same");
 }
@@ -18,7 +18,10 @@ fn test_eval_symbol() {
     let interp = Scheme::new(&SchemeOptions::new());
     let mut heap = interp.heap.borrow_mut();
     // Creates an unbound symbol, and attempt to evaluate it.
-    let symbol = heap.raw_intern_symbol("test-symbol").expect("test-symbol");
+    let symbol = heap
+        .raw_intern_symbol("test-symbol")
+        .expect("test-symbol")
+        .1;
     drop(heap);
 
     let result = interp.eval(interp.env, symbol.value());
@@ -29,7 +32,7 @@ fn test_eval_symbol() {
 
     // Bind the symbol, check value.
     let value = Value::Number(Number::Int(32));
-    interp.define("test-symbol", value);
+    interp.define_from_string("test-symbol", value);
     assert!(
         matches!(interp.eval(interp.env, symbol.value()), Ok(x) if x == value),
         "Evaluated symbol should return bound value"
@@ -54,8 +57,8 @@ fn test_eval_string() {
 fn test_true_and_false_symbols() {
     let interp = Scheme::new(&SchemeOptions::new());
 
-    let true_sym = interp.intern_symbol("#t").value();
-    let false_sym = interp.intern_symbol("#f").value();
+    let true_sym = interp.intern_symbol("#t").1.value();
+    let false_sym = interp.intern_symbol("#f").1.value();
 
     assert!(
         matches!(interp.eval(interp.env, true_sym), Ok(Value::Boolean(true))),

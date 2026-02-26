@@ -204,7 +204,7 @@ impl<R: Read> Parser<R> {
             if ch.is_ascii_alphabetic() {
                 self.next();
                 token.push(ch);
-            } else if ch == ' ' && token.is_empty() {
+            } else if (ch == ' ' || ch == ';') && token.is_empty() {
                 self.next();
                 token.push(ch);
                 break;

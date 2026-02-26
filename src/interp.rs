@@ -109,14 +109,30 @@ impl Scheme {
         let (append, list, quote, quasiquote, unquote, unquote_splicing, apply, vector) = {
             let mut heap = heap_handle.borrow_mut();
             (
-                heap.raw_intern_symbol("append"),
-                heap.raw_intern_symbol("list"),
-                heap.raw_intern_symbol("quote"),
-                heap.raw_intern_symbol("quasiquote"),
-                heap.raw_intern_symbol("unquote"),
-                heap.raw_intern_symbol("unquote-splicing"),
-                heap.raw_intern_symbol("apply"),
-                heap.raw_intern_symbol("vector"),
+                heap.raw_intern_symbol("append")
+                    .expect("raw_intern_symbol at init")
+                    .1,
+                heap.raw_intern_symbol("list")
+                    .expect("raw_intern_symbol at init")
+                    .1,
+                heap.raw_intern_symbol("quote")
+                    .expect("raw_intern_symbol at init")
+                    .1,
+                heap.raw_intern_symbol("quasiquote")
+                    .expect("raw_intern_symbol at init")
+                    .1,
+                heap.raw_intern_symbol("unquote")
+                    .expect("raw_intern_symbol at init")
+                    .1,
+                heap.raw_intern_symbol("unquote-splicing")
+                    .expect("raw_intern_symbol at init")
+                    .1,
+                heap.raw_intern_symbol("apply")
+                    .expect("raw_intern_symbol at init")
+                    .1,
+                heap.raw_intern_symbol("vector")
+                    .expect("raw_intern_symbol at init")
+                    .1,
             )
         };
         let interp = Self {
@@ -126,14 +142,14 @@ impl Scheme {
             output_stack: RefCell::new(vec![]),
 
             debug_macro: options.debug_macro,
-            list: list.expect("list symbol").value(),
-            append: append.expect("append symbol").value(),
-            quote: quote.expect("quote symbol").value(),
-            quasiquote: quasiquote.expect("quasiquote symbol").value(),
-            unquote: unquote.expect("unquote symbol").value(),
-            unquote_splicing: unquote_splicing.expect("unquote-splicing symbol").value(),
-            apply: apply.expect("apply symbol").value(),
-            vector: vector.expect("vector symbol").value(),
+            list: list.value(),
+            append: append.value(),
+            quote: quote.value(),
+            quasiquote: quasiquote.value(),
+            unquote: unquote.value(),
+            unquote_splicing: unquote_splicing.value(),
+            apply: apply.value(),
+            vector: vector.value(),
         };
         interp.init(options);
         interp
@@ -175,9 +191,9 @@ impl Scheme {
         self.heap.borrow().handle(value)
     }
 
-    fn alloc_with_retry<F>(&self, mut alloc_fn: F) -> Handle
+    fn alloc_with_retry<F, R>(&self, mut alloc_fn: F) -> R
     where
-        F: FnMut(&mut Heap) -> Result<Handle, SchemeError>,
+        F: FnMut(&mut Heap) -> Result<R, SchemeError>,
     {
         if let Ok(result) = alloc_fn(&mut self.heap.borrow_mut()) {
             return result;
@@ -187,7 +203,7 @@ impl Scheme {
         alloc_fn(&mut self.heap.borrow_mut()).expect("Out of memory after GC.")
     }
 
-    pub fn intern_symbol(&self, name: &str) -> Handle {
+    pub fn intern_symbol(&self, name: &str) -> (Rc<str>, Handle) {
         self.alloc_with_retry(|heap| heap.raw_intern_symbol(name))
     }
 
@@ -236,8 +252,8 @@ impl Scheme {
         self.alloc_with_retry(|heap| heap.raw_alloc_string(owned.clone()))
     }
 
-    pub fn alloc_primitive(&self, func: PrimitiveFn) -> Handle {
-        self.alloc_with_retry(|heap| heap.raw_alloc_primitive(func))
+    pub fn alloc_primitive(&self, name: Rc<str>, func: PrimitiveFn) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_primitive(name.clone(), func))
     }
 
     pub fn alloc_closure(&self, closure: Closure) -> Handle {
@@ -345,20 +361,24 @@ impl Scheme {
         }
     }
 
-    pub fn define(&self, name: &str, value: Value) -> Value {
-        let symbol = self.intern_symbol(name);
+    pub fn define(&self, symbol: Value, value: Value) -> Value {
+        let id = self
+            .to_object(symbol)
+            .expect("define can only define a symbol.");
         let env = self.to_env(self.env);
-        env.borrow_mut().define(symbol.id(), value);
-        symbol.value()
+        env.borrow_mut().define(id, value);
+        symbol
+    }
+
+    pub fn define_from_string(&self, name: &str, value: Value) {
+        let (_, handle) = self.intern_symbol(name);
+        self.define(handle.value(), value);
     }
 
     pub fn define_primitive(&self, name: &str, func: heap::PrimitiveFn) {
-        let prim = self
-            .heap
-            .borrow_mut()
-            .raw_alloc_primitive(func)
-            .expect("Out of memory while defining primitives!!");
-        self.define(name, prim.value());
+        let (name, handle) = self.intern_symbol(name);
+        let prim = self.alloc_primitive(name.clone(), func);
+        self.define(handle.value(), prim.value());
     }
 
     fn init(&self, options: &SchemeOptions) {
@@ -395,7 +415,7 @@ impl Scheme {
     }
 
     pub fn lookup(&self, name: &str) -> Handle {
-        self.intern_symbol(name)
+        self.intern_symbol(name).1
     }
 
     pub fn eval(&self, env: Value, expr: Value) -> Result<Value, SchemeError> {
@@ -701,7 +721,7 @@ impl Scheme {
     pub fn to_symbol_name(&self, value: Value) -> Result<String, SchemeError> {
         let id = self.to_object(value)?;
         match self.heap.borrow().get(id) {
-            HeapObject::Symbol(name) => Ok(name.clone()),
+            HeapObject::Symbol(name) => Ok(name.to_string()),
             _ => Err(SchemeError::TypeError(format!(
                 "Expected a Symbol, but got a {}.",
                 value.type_name()

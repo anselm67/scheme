@@ -382,12 +382,12 @@ fn primitive_string_to_number(
     let mut exactness: Option<bool> = None;
     let mut input = string.trim();
     while input.starts_with('#') {
-        match &input[0..2] {
-            "#b" => radix = 2,
-            "#o" => radix = 8,
-            "#x" => radix = 16,
-            "#e" => exactness = Some(true),
-            "#i" => exactness = Some(false),
+        match input.get(0..2) {
+            Some("#b") => radix = 2,
+            Some("#o") => radix = 8,
+            Some("#x") => radix = 16,
+            Some("#e") => exactness = Some(true),
+            Some("#i") => exactness = Some(false),
             _ => return EvalResult::done(Value::Boolean(false)),
         }
         input = &input[2..];
