@@ -606,6 +606,18 @@ impl Scheme {
         }
     }
 
+    pub fn is_input_port(&self, value: Value) -> bool {
+        if let Some(id) = self.is_object(value) {
+            let heap = self.heap.borrow();
+            match heap.get(id) {
+                HeapObject::InputPort(_) => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
     pub fn to_input_port(
         &self,
         value: Value,
@@ -618,6 +630,18 @@ impl Scheme {
                 "Expected an InputPort, but got a {}",
                 value.type_name()
             ))),
+        }
+    }
+
+    pub fn is_output_port(&self, value: Value) -> bool {
+        if let Some(id) = self.is_object(value) {
+            let heap = self.heap.borrow();
+            match heap.get(id) {
+                HeapObject::OutputPort(_) => true,
+                _ => false,
+            }
+        } else {
+            false
         }
     }
 

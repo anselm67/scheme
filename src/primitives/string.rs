@@ -375,10 +375,11 @@ fn primitive_string_to_number(
     let string = interp.to_string(args[0])?;
     let string = string.borrow();
 
-    let mut radix: u32 = 10;
-    if args.len() == 2 {
-        radix = interp.to_integer(args[1])? as u32;
-    }
+    let mut radix: u32 = if args.len() == 2 {
+        interp.to_integer(args[1])? as u32
+    } else {
+        10
+    };
     let mut exactness: Option<bool> = None;
     let mut input = string.trim();
     while input.starts_with('#') {

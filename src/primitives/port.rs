@@ -11,6 +11,24 @@ use crate::{
     types::{EvalResult, SchemeError, Value},
 };
 
+fn primitive_input_port_p(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 1);
+    EvalResult::done(Value::Boolean(interp.is_input_port(args[0])))
+}
+
+fn primitive_output_port_p(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 1);
+    EvalResult::done(Value::Boolean(interp.is_output_port(args[0])))
+}
+
 fn primitive_open_input_file(
     interp: &Scheme,
     _env: Value,
@@ -68,6 +86,31 @@ fn primitive_read_char(
         let mut buf = [0u8; 1];
         match reader.read_exact(&mut buf) {
             Ok(_) => EvalResult::done(Value::Char(buf[0])),
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => EvalResult::done(Value::Eof),
+            Err(e) => Err(SchemeError::IOError(format!("Read error {}", e))),
+        }
+    } else {
+        Err(SchemeError::IOError(format!(
+            "Attempt to read from closed input port."
+        )))
+    }
+}
+
+fn primitive_peek_char(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    let mut input = interp.get_input_port()?;
+    check_arity_range!(args, 0, 1);
+    if args.len() == 1 {
+        input = interp.to_input_port(args[0])?;
+    }
+    let mut borrow = input.borrow_mut();
+    if let Some(ref mut reader) = *borrow {
+        match reader.fill_buf() {
+            Ok(b) if b.is_empty() => EvalResult::done(Value::Eof),
+            Ok(b) => EvalResult::done(Value::Char(b[0])),
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => EvalResult::done(Value::Eof),
             Err(e) => Err(SchemeError::IOError(format!("Read error {}", e))),
         }
@@ -291,6 +334,8 @@ fn primitive_write(
 }
 
 pub fn register(interp: &Scheme) {
+    interp.define_primitive("input-port?", primitive_input_port_p);
+    interp.define_primitive("output-port?", primitive_output_port_p);
     interp.define_primitive("open-input-file", primitive_open_input_file);
     interp.define_primitive("open-input-string", primitive_open_input_string);
     interp.define_primitive("close-input-port", primitive_close_input_port);
@@ -300,6 +345,7 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("close-output-port", primitive_close_output_port);
     interp.define_primitive("read", primitive_read);
     interp.define_primitive("read-char", primitive_read_char);
+    interp.define_primitive("peek-char", primitive_peek_char);
     interp.define_primitive("eof-object?", primitive_eof_object);
     interp.define_primitive("write-char", primitive_write_char);
     interp.define_primitive("flush-output-port", primitive_flush_output_port);

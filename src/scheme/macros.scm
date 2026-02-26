@@ -280,5 +280,16 @@
         (else (assq item (cdr lst))))
 )
 
+(define (call-with-input-file filename proc)
+    (let ((port (open-input-file filename)))
+        (catch (lambda (err) (close-input-port port)) 
+            (let ((result (proc port)))
+                    (close-input-port port)
+                    result))))
 
-
+(define (call-with-output-file filename proc)
+    (let ((port (open-output-file filename)))
+        (catch (lambda (err) (debug "FAILED" err) (close-output-port port)) 
+            (let ((result (proc port)))
+                    (close-output-port port)
+                    result))))

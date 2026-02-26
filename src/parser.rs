@@ -201,10 +201,10 @@ impl<R: Read> Parser<R> {
         let mut token = String::new();
         while let Some(ch) = self.peek() {
             let ch = ch as char;
-            if ch.is_ascii_alphabetic() {
+            if ch.is_alphanumeric() {
                 self.next();
                 token.push(ch);
-            } else if (ch == ' ' || ch == ';') && token.is_empty() {
+            } else if matches!(ch, ' ' | ';' | '(' | '.' | ')' | '*' | '?') && token.is_empty() {
                 self.next();
                 token.push(ch);
                 break;

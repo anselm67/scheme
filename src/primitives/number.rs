@@ -222,6 +222,41 @@ fn primitive_gcd(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalRes
     EvalResult::done(Value::Number(Number::Int(result)))
 }
 
+fn primitive_number_to_string(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity_range!(args, 1, 2);
+    let number = interp.to_number(args[0])?;
+    let radix = if args.len() == 2 {
+        interp.to_integer(args[1])? as u32
+    } else {
+        10
+    };
+    let string = match number {
+        Number::Int(value) => match radix {
+            2 => format!("{:b}", value),
+            8 => format!("{:o}", value),
+            10 => format!("{}", value),
+            16 => format!("{:x}", value),
+            _ => Err(SchemeError::UnsupportedError(format!(
+                "Radix {radix} isn't suported, supported radixes are 2, 8, 10 and 16."
+            )))?,
+        },
+        Number::Float(value) => {
+            if radix != 10 {
+                Err(SchemeError::UnsupportedError(format!(
+                    "Radix {radix} isn't supported, only supported radix for floats is 10."
+                )))?
+            } else {
+                format!("{}", value)
+            }
+        }
+    };
+    EvalResult::done(interp.alloc_string(&string).value())
+}
+
 pub fn register(interp: &Scheme) {
     interp.define_primitive("number?", primitive_number_p);
     interp.define_primitive("integer?", primitive_integer_p);
@@ -242,4 +277,5 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("min", primitive_number_min);
     interp.define_primitive("gcd", primitive_gcd);
     interp.define_primitive("sqt", primitive_sqt);
+    interp.define_primitive("number->string", primitive_number_to_string);
 }

@@ -55,6 +55,7 @@ pub struct OutputPort {
     pub port: Rc<RefCell<Option<Box<dyn Write>>>>,
     pub string_buffer: Option<Rc<RefCell<Vec<u8>>>>,
 }
+
 #[derive(Clone)]
 pub enum HeapObject {
     FreeSlot(GcId),
