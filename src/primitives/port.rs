@@ -17,7 +17,7 @@ fn primitive_open_input_file(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    let filename = interp.to_string(args[0])?.to_string();
+    let filename = interp.to_string(args[0])?.borrow().to_string();
     let file = File::open(&filename)
         .map_err(|_| SchemeError::FileNotFound(format!("Can't open file {}", filename)))?;
     let reader = BufReader::new(file);
@@ -32,7 +32,7 @@ fn primitive_open_input_string(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    let text = { interp.to_string(args[0])?.as_bytes().to_vec() };
+    let text = { interp.to_string(args[0])?.borrow().as_bytes().to_vec() };
     let cursor = std::io::Cursor::new(text);
     let boxed_reader: Box<dyn BufRead> = Box::new(cursor);
     let input = Rc::new(RefCell::new(Some(boxed_reader)));
@@ -93,7 +93,8 @@ fn primitive_open_output_file(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    let filename = interp.to_string(args[0])?.to_string();
+    let filename = interp.to_string(args[0])?;
+    let filename = filename.borrow();
     let file = File::create(filename.clone()).map_err(|e| {
         SchemeError::FileNotFound(format!(
             "Couldn't open file {} for writing: {}",

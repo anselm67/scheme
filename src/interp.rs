@@ -1,4 +1,4 @@
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
@@ -517,55 +517,27 @@ impl Scheme {
         }
     }
 
-    pub fn is_string(&self, value: Value) -> Option<Ref<'_, String>> {
+    pub fn is_string(&self, value: Value) -> Option<Rc<RefCell<String>>> {
         if let Some(id) = self.is_object(value) {
-            Ref::filter_map(self.heap.borrow(), |h| {
-                if let HeapObject::String(string) = h.get(id) {
-                    Some(string)
-                } else {
-                    None
-                }
-            })
-            .ok()
+            if let HeapObject::String(string) = self.heap.borrow().get(id) {
+                Some(string.clone())
+            } else {
+                None
+            }
         } else {
             None
         }
     }
 
-    pub fn to_string(&self, value: Value) -> Result<Ref<'_, String>, SchemeError> {
+    pub fn to_string(&self, value: Value) -> Result<Rc<RefCell<String>>, SchemeError> {
         let id = self.to_object(value)?;
-        let heap = self.heap.borrow();
-        Ref::filter_map(heap, |h| {
-            if let HeapObject::String(string) = h.get(id) {
-                Some(string)
-            } else {
-                None
-            }
-        })
-        .map_err(|_| {
-            SchemeError::TypeError(format!(
+        match self.heap.borrow().get(id) {
+            HeapObject::String(string) => Ok(string.clone()),
+            _ => Err(SchemeError::TypeError(format!(
                 "Expected a String, but got a {}",
                 value.type_name()
-            ))
-        })
-    }
-
-    pub fn to_string_mut(&self, value: Value) -> Result<RefMut<'_, String>, SchemeError> {
-        let id = self.to_object(value)?;
-        let heap = self.heap.borrow_mut();
-        RefMut::filter_map(heap, |h| {
-            if let HeapObject::String(string) = h.get_mut(id) {
-                Some(string)
-            } else {
-                None
-            }
-        })
-        .map_err(|_| {
-            SchemeError::TypeError(format!(
-                "Expected a String, but got a {}",
-                value.type_name()
-            ))
-        })
+            ))),
+        }
     }
 
     pub fn is_closure(&self, value: Value) -> Option<Ref<'_, Closure>> {

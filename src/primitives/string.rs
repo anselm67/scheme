@@ -52,7 +52,11 @@ fn primitive_string_to_list(
     extract_args!(args, 1, _id: Object);
     let chars: Vec<Value> = {
         let string = interp.to_string(args[0])?;
-        string.chars().map(|ch| Value::Char(ch as u8)).collect()
+        string
+            .borrow()
+            .chars()
+            .map(|ch| Value::Char(ch as u8))
+            .collect()
     };
     EvalResult::done(interp.alloc_list(&chars).value())
 }
@@ -78,7 +82,7 @@ fn primitive_string_length(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let string = interp.to_string(args[0])?;
-    EvalResult::done(Value::Number(Number::Int(string.len() as i64)))
+    EvalResult::done(Value::Number(Number::Int(string.borrow().len() as i64)))
 }
 
 fn primitive_string_ref(
@@ -88,6 +92,7 @@ fn primitive_string_ref(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     let string = interp.to_string(args[0])?;
+    let string = string.borrow();
     let index = interp.to_integer(args[1])?;
     if index >= 0
         && index < (string.len() as i64)
@@ -109,7 +114,8 @@ fn primitive_string_set(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 3);
-    let mut string = interp.to_string_mut(args[0])?;
+    let string = interp.to_string(args[0])?;
+    let mut string = string.borrow_mut();
     let index = interp.to_integer(args[1])?;
     let value = interp.to_char(args[2])?;
     if index >= 0 && index < (string.len() as i64) {
@@ -139,7 +145,7 @@ where
     let heap = interp.heap.borrow();
     match (heap.get(*aid), heap.get(*bid)) {
         (HeapObject::String(sa), HeapObject::String(sb)) => {
-            let result = f(sa, sb);
+            let result = f(&sa.borrow(), &sb.borrow());
             EvalResult::done(Value::Boolean(result))
         }
         (xa, xb) => Err(SchemeError::TypeError(format!(
@@ -248,7 +254,7 @@ fn primitive_string_append(
     let mut buf = String::new();
     for arg in args {
         let string = interp.to_string(*arg)?;
-        buf.push_str(&string);
+        buf.push_str(&string.borrow());
     }
     EvalResult::done(interp.alloc_string(buf).value())
 }
@@ -259,7 +265,8 @@ fn primitive_substring(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 3);
-    let string = interp.to_string(args[0])?.to_string();
+    let string = interp.to_string(args[0])?;
+    let string = string.borrow();
     let start_index = interp.to_integer(args[1])?;
     let end_index = interp.to_integer(args[2])?;
     if start_index < 0 || start_index > string.len() as i64 {
@@ -290,8 +297,9 @@ fn primitive_string_copy(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    let string = interp.to_string(args[0])?.to_string();
-    EvalResult::done(interp.alloc_string(string).value())
+    let string = interp.to_string(args[0])?;
+    let string = string.borrow();
+    EvalResult::done(interp.alloc_string(&string[..]).value())
 }
 
 fn primitive_string_fill(
@@ -300,7 +308,8 @@ fn primitive_string_fill(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
-    let mut string = interp.to_string_mut(args[0])?.to_string();
+    let string = interp.to_string(args[0])?;
+    let mut string = string.borrow_mut();
     let ch = interp.to_char(args[1])?;
     // TODO Again this is really ugly!
     let count = string.chars().count();
@@ -308,7 +317,7 @@ fn primitive_string_fill(
     for _ in 0..count {
         string.push(ch);
     }
-    EvalResult::done(interp.alloc_string(string).value())
+    EvalResult::done(interp.alloc_string(&string[..]).value())
 }
 
 pub fn register(interp: &Scheme) {

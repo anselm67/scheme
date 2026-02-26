@@ -58,8 +58,7 @@ pub enum HeapObject {
     Vector(Rc<RefCell<Vec<Value>>>),
     // TODO String This should really be an Id to the String.
     Symbol(String),
-    // TODO => RefCell?
-    String(String),
+    String(Rc<RefCell<String>>),
     Primitive(PrimitiveFn),
     Closure(Box<Closure>),
     NaryClosure(Box<Closure>),
@@ -538,7 +537,7 @@ impl Heap {
 
     pub fn raw_alloc_string(&mut self, s: impl Into<String>) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
-        self.objects[id] = HeapObject::String(s.into());
+        self.objects[id] = HeapObject::String(Rc::new(RefCell::new(s.into())));
         Ok(self.handle_id(id))
     }
 
@@ -809,7 +808,7 @@ impl SchemeObject for GcId {
             HeapObject::Symbol(s) => write!(f, "{}", s),
             HeapObject::String(s) => {
                 write!(f, "{}", "\"")?;
-                s.chars().try_fold((), |_, ch| match ch {
+                s.borrow().chars().try_fold((), |_, ch| match ch {
                     '\n' => write!(f, "\\n"),
                     '\t' => write!(f, "\\t"),
                     '\r' => write!(f, "\\r"),
@@ -862,7 +861,7 @@ impl SchemeObject for GcId {
                 write!(f, ")")
             }
             HeapObject::Symbol(s) => write!(f, "{}", s),
-            HeapObject::String(s) => write!(f, "{}", s),
+            HeapObject::String(s) => write!(f, "{}", s.borrow()),
             HeapObject::Primitive(pr) => write!(f, "<primitive {:p}>", pr),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),

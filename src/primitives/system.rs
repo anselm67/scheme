@@ -46,8 +46,9 @@ fn primitive_debug(
 fn primitive_load(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let mut retval = Value::Nil;
     for arg in args {
-        let filename = interp.to_string(*arg)?.to_string();
-        retval = interp.load(&filename)?;
+        let filename = interp.to_string(*arg)?;
+        let filename = filename.borrow();
+        retval = interp.load(filename.clone())?;
     }
     EvalResult::done(retval)
 }

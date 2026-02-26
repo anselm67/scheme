@@ -55,8 +55,8 @@ fn primitive_error(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    let string = interp.to_string(args[0])?.to_string();
-    Err(SchemeError::UserError(string))
+    let string = interp.to_string(args[0])?;
+    Err(SchemeError::UserError(string.borrow().clone()))
 }
 
 fn primitive_with_exception_handler(
@@ -149,7 +149,8 @@ fn primitive_string_to_symbol(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     // TODO String requires some serious fixing.
-    let name = interp.to_string(args[0])?.to_string();
+    let name = interp.to_string(args[0])?;
+    let name = name.borrow();
     let symbol = interp.intern_symbol(&name);
     EvalResult::done(symbol.value())
 }
