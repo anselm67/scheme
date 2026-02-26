@@ -56,7 +56,6 @@ pub enum HeapObject {
     FreeSlot(GcId),
     Pair(Value, Value),
     Vector(Rc<RefCell<Vec<Value>>>),
-    // TODO String This should really be an Id to the String.
     Symbol(String),
     String(Rc<RefCell<String>>),
     Primitive(PrimitiveFn),

@@ -353,12 +353,11 @@ impl Scheme {
     }
 
     pub fn define_primitive(&self, name: &str, func: heap::PrimitiveFn) {
-        // TODO Retry on alloc failure
         let prim = self
             .heap
             .borrow_mut()
             .raw_alloc_primitive(func)
-            .expect("Should garbage collect!!");
+            .expect("Out of memory while defining primitives!!");
         self.define(name, prim.value());
     }
 

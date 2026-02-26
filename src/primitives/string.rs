@@ -320,6 +320,86 @@ fn primitive_string_fill(
     EvalResult::done(interp.alloc_string(&string[..]).value())
 }
 
+fn parse_integer(
+    input: &str,
+    radix: u32,
+    exactness: Option<bool>,
+) -> Result<EvalResult, SchemeError> {
+    let (is_negative, input) = if input.starts_with('-') {
+        (true, &input[1..])
+    } else if input.starts_with('+') {
+        (false, &input[1..])
+    } else {
+        (false, input)
+    };
+    if let Some(mut value) = i64::from_str_radix(input, radix).ok() {
+        if is_negative {
+            value = -value
+        }
+        EvalResult::done(Value::Number(if exactness == Some(false) {
+            Number::Float(value as f64)
+        } else {
+            Number::Int(value)
+        }))
+    } else {
+        EvalResult::done(Value::Boolean(false))
+    }
+}
+
+fn parse_float(
+    input: &str,
+    radix: u32,
+    exactness: Option<bool>,
+) -> Result<EvalResult, SchemeError> {
+    if radix != 10 {
+        Err(SchemeError::UnsupportedError(format!(
+            "Radix {radix} != 10 isn't supported for floats."
+        )))
+    } else if let Some(value) = input.parse().ok() {
+        if exactness == Some(true) {
+            EvalResult::done(Value::Number(Number::Int(value as i64)))
+        } else {
+            EvalResult::done(Value::Number(Number::Float(value)))
+        }
+    } else {
+        EvalResult::done(Value::Boolean(false))
+    }
+}
+
+fn primitive_string_to_number(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    check_arity_range!(args, 1, 2);
+    let string = interp.to_string(args[0])?;
+    let string = string.borrow();
+
+    let mut radix: u32 = 10;
+    if args.len() == 2 {
+        radix = interp.to_integer(args[1])? as u32;
+    }
+    let mut exactness: Option<bool> = None;
+    let mut input = string.trim();
+    while input.starts_with('#') {
+        match &input[0..2] {
+            "#b" => radix = 2,
+            "#o" => radix = 8,
+            "#x" => radix = 16,
+            "#e" => exactness = Some(true),
+            "#i" => exactness = Some(false),
+            _ => return EvalResult::done(Value::Boolean(false)),
+        }
+        input = &input[2..];
+    }
+
+    if input.contains('.') || input.contains('e') || exactness == Some(false) {
+        parse_float(input, radix, exactness)
+    } else {
+        parse_integer(input, radix, exactness)
+    }
+}
+
 pub fn register(interp: &Scheme) {
     interp.define_primitive("string?", primitive_string_p);
     interp.define_primitive("make-string", primitive_make_string);
@@ -343,4 +423,5 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("substring", primitive_substring);
     interp.define_primitive("string-copy", primitive_string_copy);
     interp.define_primitive("string-fill!", primitive_string_fill);
+    interp.define_primitive("string->number", primitive_string_to_number);
 }

@@ -18,6 +18,7 @@ pub enum SchemeError {
     IndexOutOfBounds(String),
     IOError(String),
     OutOfMemoryError(String),
+    UnsupportedError(String),
     // Other error types can be added here
 }
 
@@ -36,6 +37,7 @@ impl SchemeError {
             SchemeError::IndexOutOfBounds(m) => ("Index out of bounds", m),
             SchemeError::IOError(m) => ("I/O error", m),
             SchemeError::OutOfMemoryError(m) => ("Out of memory error", m),
+            SchemeError::UnsupportedError(m) => ("Unsupported feature", m),
         }
     }
 }
