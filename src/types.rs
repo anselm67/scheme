@@ -224,6 +224,22 @@ impl std::ops::Rem for Number {
 }
 
 impl Number {
+    pub fn is_exact(&self) -> bool {
+        matches!(self, Number::Int(_))
+    }
+
+    pub fn is_inexact(&self) -> bool {
+        matches!(self, Number::Float(_))
+    }
+
+    pub fn as_inexact(&self) -> Number {
+        if let Number::Int(value) = self {
+            Number::Float(*value as f64)
+        } else {
+            *self
+        }
+    }
+
     pub fn to_f64(&self) -> f64 {
         match self {
             Number::Int(i) => *i as f64,
@@ -356,7 +372,8 @@ impl Value {
 
     pub fn is_equal(&self, interp: &Scheme, other: &Value) -> bool {
         match (self, other) {
-            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::Number(Number::Int(a)), Value::Number(Number::Int(b))) => a == b,
+            (Value::Number(Number::Float(a)), Value::Number(Number::Float(b))) => a == b,
             (Value::Char(a), Value::Char(b)) => a == b,
             (Value::Boolean(a), Value::Boolean(b)) => a == b,
             (Value::Object(a), Value::Object(b)) => {

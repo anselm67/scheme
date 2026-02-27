@@ -220,8 +220,13 @@
         (let ((a (car args)))
             (if (null? (cdr args))
                 (abs a)
-                (/ (abs (* a (cadr args))) (gcd a (cadr args)))))))
+                (let ((b (cadr args)))
+                    (if (and (exact? a) (exact? b))
+                        (inexact->exact (/ (abs (* a b)) (gcd a b)))
+                        (/ (abs (* a b)) (gcd a b)))))))
+                    )
 )
+
 (define (abs num) (if (negative? num) (- num) num))
 (define! remainder %)
 

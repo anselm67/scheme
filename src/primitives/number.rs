@@ -172,10 +172,12 @@ fn primitive_number_max(
         ));
     }
     let init = nums[0];
-    let ret = nums
-        .into_iter()
-        .fold(init, |a, b| if a > b { a } else { b });
-    EvalResult::number(ret)
+    let mut inexact = init.is_inexact();
+    let ret = nums.into_iter().fold(init, |a, b| {
+        inexact = inexact || b.is_inexact();
+        if a > b { a } else { b }
+    });
+    EvalResult::number(if inexact { ret.as_inexact() } else { ret })
 }
 
 fn primitive_number_min(
@@ -256,10 +258,7 @@ fn primitive_exact_to_inexact(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, n: Number);
-    match n {
-        Number::Int(i) => EvalResult::int(*i),
-        _ => EvalResult::done(args[0]),
-    }
+    EvalResult::number(n.as_inexact())
 }
 
 fn primitive_inexact_to_exact(
@@ -281,8 +280,24 @@ fn primitive_round(
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, n: Number);
     match n {
-        Number::Float(f) => EvalResult::float(f.round()),
-        _ => EvalResult::done(args[0]),
+        Number::Int(_) => EvalResult::number(*n),
+        Number::Float(f) => {
+            // If it's not exactly a .5 case, Rust's standard round is fine.
+            // We check if the fractional part is exactly 0.5.
+            if f.fract().abs() == 0.5 {
+                let floor = f.floor();
+                // If the floor is even, we stay there.
+                // Otherwise, we must go to the ceiling (the other neighbor).
+                if floor % 2.0 == 0.0 {
+                    EvalResult::float(floor)
+                } else {
+                    EvalResult::float(f.ceil())
+                }
+            } else {
+                // Standard rounding for .1, .4, .6, .9, etc.
+                EvalResult::float(f.round())
+            }
+        }
     }
 }
 

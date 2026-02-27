@@ -1,6 +1,6 @@
 use crate::{
     interp::Scheme,
-    types::{EvalResult, SchemeError, Value},
+    types::{EvalResult, Number, SchemeError, Value},
 };
 
 fn primitive_eval(interp: &Scheme, env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
@@ -46,7 +46,12 @@ fn primitive_equal(
 
 fn primitive_eq(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
-    EvalResult::done(Value::Boolean(args[0] == args[1]))
+    let value = match (args[0], args[1]) {
+        (Value::Number(Number::Float(_)), Value::Number(Number::Int(_))) => false,
+        (Value::Number(Number::Int(_)), Value::Number(Number::Float(_))) => false,
+        (a, b) => a == b,
+    };
+    EvalResult::bool(value)
 }
 
 fn primitive_error(
