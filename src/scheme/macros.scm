@@ -309,10 +309,14 @@
         (lambda ()
             (if ready? 
                 result
-                (begin (set! result (expr))
-                    (set! ready? #t)
+                (let ((value (expr)))
+                    (if (not ready?) 
+                        (begin 
+                            (set! ready? #t) 
+                            (set! result value)))
                     result))))
 )
+
  
 (define-syntax delay 
     (lambda (expr) 
