@@ -247,16 +247,15 @@
 )
 
 (define (member item lst) 
-    (debug "item: " item ", lst: " lst)
     (cond ((null? lst) #f)
-        ((equal? item (car lst)) (cdr lst))
+        ((equal? item (car lst)) lst)
         (else (member item (cdr lst)))
     )
 )
 
 (define (memv item lst) 
     (cond ((null? lst) #f)
-        ((equal? item (car lst)) (cdr lst))
+        ((equal? item (car lst)) lst)
         (else (memv item (cdr lst)))
     )
 )
