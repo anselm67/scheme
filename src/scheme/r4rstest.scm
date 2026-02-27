@@ -374,11 +374,11 @@
 (and list? (test #f list? y))
 (and list? (let ((x (list 'a))) (set-cdr! x x) (test #f 'list? (list? x))))
 
-;(test #t pair? '(a . b))
-;(test #t pair? '(a . 1))
-;(test #t pair? '(a b c))
-;(test #f pair? '())
-;(test #f pair? '#(a b))
+(test #t pair? '(a . b))
+(test #t pair? '(a . 1))
+(test #t pair? '(a b c))
+(test #f pair? '())
+(test #f pair? '#(a b))
 
 (test '(a) cons 'a '())
 (test '((a) b c d) cons '(a) '(b c d))
