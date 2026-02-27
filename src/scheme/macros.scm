@@ -32,8 +32,8 @@
 
 (define named_let_
     (lambda (name bindings body) 
-        `(letrec ((,name (lambda ,(map_one_ car bindings) ,@body))) 
-            (,name ,@(map_one_ cadr bindings)) ) )
+        `((letrec ((,name (lambda ,(map_one_ car bindings) ,@body))) ,name)
+            ,@(map_one_ cadr bindings)) ) 
 )
 
 (define regular_let_
@@ -87,10 +87,10 @@
     (lambda exprs
         (if (null? exprs)
             #t
-            `(let ((first ,(car exprs)))
-                (if (not first) first (and ,@(cdr exprs))))
-        )
-    )
+            (if (null? (cdr exprs))
+                `,(car exprs)
+                `(let ((first ,(car exprs)))
+                    (if (not first) first (and ,@(cdr exprs)))))))
 )
 
 (define-syntax catch
@@ -263,7 +263,7 @@
 
 (define (memq item lst)
     (cond ((null? lst) #f)
-        ((eq? item (car lst)) (cdr lst))
+        ((eq? item (car lst)) lst)
         (else (memq item (cdr lst))))
 )
 
