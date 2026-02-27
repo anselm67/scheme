@@ -75,7 +75,7 @@ fn primitive_modulo(
     check_arity!(args, 2);
     let a = interp.to_integer(args[0])?;
     let b = interp.to_integer(args[1])?;
-    EvalResult::int(a.rem_euclid(b))
+    EvalResult::int(((a % b) + b) % b)
 }
 
 fn with_numbers<F>(interp: &Scheme, args: &[Value], cmp: F) -> Result<EvalResult, SchemeError>
