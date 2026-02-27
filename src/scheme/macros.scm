@@ -303,7 +303,6 @@
     (let ((ready? #f)
           (result #f))
         (lambda ()
-            (debug "ready? " ready?)
             (if ready? 
                 result
                 (begin (set! result (expr))
