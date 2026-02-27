@@ -6,7 +6,7 @@ use crate::{
 fn primitive_add(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     let sum = nums.into_iter().fold(Number::Int(0), |acc, n| acc + n);
-    EvalResult::done(Value::Number(sum))
+    EvalResult::number(sum)
 }
 
 fn primitive_sub(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
@@ -24,7 +24,7 @@ fn primitive_sub(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalRe
     } else {
         iter.fold(init, |acc, n| acc - n)
     };
-    EvalResult::done(Value::Number(sub))
+    EvalResult::number(sub)
 }
 
 fn primitive_div(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
@@ -42,18 +42,18 @@ fn primitive_div(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalRe
     } else {
         iter.fold(init, |acc, n| acc / n)
     };
-    EvalResult::done(Value::Number(div))
+    EvalResult::number(div)
 }
 
 fn primitive_mul(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     let nums = all_of_type!(args, Value::Number, "Number");
     let mul = nums.into_iter().fold(Number::Int(1), |acc, n| acc * n);
-    EvalResult::done(Value::Number(mul))
+    EvalResult::number(mul)
 }
 
 fn primitive_rem(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, a: Number, b: Number);
-    EvalResult::done(Value::Number(*a % *b))
+    EvalResult::number(*a % *b)
 }
 
 fn primitive_quotient(
@@ -64,7 +64,7 @@ fn primitive_quotient(
     check_arity!(args, 2);
     let a = interp.to_integer(args[0])?;
     let b = interp.to_integer(args[1])?;
-    EvalResult::done(Value::Number(Number::Int(a / b)))
+    EvalResult::int(a / b)
 }
 
 fn primitive_modulo(
@@ -75,7 +75,7 @@ fn primitive_modulo(
     check_arity!(args, 2);
     let a = interp.to_integer(args[0])?;
     let b = interp.to_integer(args[1])?;
-    EvalResult::done(Value::Number(Number::Int(a.rem_euclid(b))))
+    EvalResult::int(a.rem_euclid(b))
 }
 
 fn with_numbers<F>(interp: &Scheme, args: &[Value], cmp: F) -> Result<EvalResult, SchemeError>
@@ -91,7 +91,7 @@ where
         }
         a = b;
     }
-    return EvalResult::done(Value::Boolean(true));
+    return EvalResult::bool(true);
 }
 fn primitive_number_eq(
     interp: &Scheme,
@@ -148,7 +148,7 @@ fn primitive_integer_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_integer(args[0]).is_some()))
+    EvalResult::bool(interp.is_integer(args[0]).is_some())
 }
 
 fn primitive_float_p(
@@ -157,7 +157,7 @@ fn primitive_float_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_float(args[0]).is_some()))
+    EvalResult::bool(interp.is_float(args[0]).is_some())
 }
 
 fn primitive_number_max(
@@ -175,7 +175,7 @@ fn primitive_number_max(
     let ret = nums
         .into_iter()
         .fold(init, |a, b| if a > b { a } else { b });
-    EvalResult::done(Value::Number(ret))
+    EvalResult::number(ret)
 }
 
 fn primitive_number_min(
@@ -193,14 +193,14 @@ fn primitive_number_min(
     let ret = nums
         .into_iter()
         .fold(init, |a, b| if a < b { a } else { b });
-    EvalResult::done(Value::Number(ret))
+    EvalResult::number(ret)
 }
 
 fn primitive_sqt(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let value = interp.to_number(args[0])?;
 
-    EvalResult::done(Value::Number(value.sqrt()))
+    EvalResult::number(value.sqrt())
 }
 
 fn gcd_two(a: i64, b: i64) -> i64 {
@@ -219,7 +219,7 @@ fn primitive_gcd(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalRes
         let n = interp.to_integer(*arg)?;
         result = gcd_two(result, n);
     }
-    EvalResult::done(Value::Number(Number::Int(result)))
+    EvalResult::int(result)
 }
 
 fn primitive_number_to_string(
@@ -257,6 +257,42 @@ fn primitive_number_to_string(
     EvalResult::done(interp.alloc_string(&string).value())
 }
 
+fn primitive_exact_to_inexact(
+    _interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    extract_args!(args, 1, n: Number);
+    match n {
+        Number::Int(i) => EvalResult::int(*i),
+        _ => EvalResult::done(args[0]),
+    }
+}
+
+fn primitive_inexact_to_exact(
+    _interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    extract_args!(args, 1, n: Number);
+    match n {
+        Number::Float(f) => EvalResult::int(f.round() as i64),
+        _ => EvalResult::done(args[0]),
+    }
+}
+
+fn primitive_round(
+    _interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    extract_args!(args, 1, n: Number);
+    match n {
+        Number::Float(f) => EvalResult::float(f.round()),
+        _ => EvalResult::done(args[0]),
+    }
+}
+
 pub fn register(interp: &Scheme) {
     interp.define_primitive("number?", primitive_number_p);
     interp.define_primitive("integer?", primitive_integer_p);
@@ -278,4 +314,7 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("gcd", primitive_gcd);
     interp.define_primitive("sqt", primitive_sqt);
     interp.define_primitive("number->string", primitive_number_to_string);
+    interp.define_primitive("exact->inexact", primitive_exact_to_inexact);
+    interp.define_primitive("inexact->exact", primitive_inexact_to_exact);
+    interp.define_primitive("round", primitive_round);
 }

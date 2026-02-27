@@ -67,6 +67,26 @@ impl EvalResult {
     pub fn done(value: Value) -> Result<EvalResult, SchemeError> {
         Ok(EvalResult::Done(value))
     }
+
+    pub fn int(value: i64) -> Result<EvalResult, SchemeError> {
+        EvalResult::done(Value::int(value))
+    }
+
+    pub fn float(value: f64) -> Result<EvalResult, SchemeError> {
+        EvalResult::done(Value::float(value))
+    }
+
+    pub fn number(value: Number) -> Result<EvalResult, SchemeError> {
+        EvalResult::done(Value::number(value))
+    }
+
+    pub fn char(value: char) -> Result<EvalResult, SchemeError> {
+        EvalResult::done(Value::char(value))
+    }
+
+    pub fn bool(value: bool) -> Result<EvalResult, SchemeError> {
+        EvalResult::done(Value::bool(value))
+    }
 }
 pub trait SchemeObject {
     fn eval(&self, interp: &Scheme, env: Value) -> Result<EvalResult, SchemeError>;
@@ -241,6 +261,26 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn int(value: i64) -> Value {
+        Value::Number(Number::Int(value))
+    }
+
+    pub fn float(value: f64) -> Value {
+        Value::Number(Number::Float(value))
+    }
+
+    pub fn number(value: Number) -> Value {
+        Value::Number(value)
+    }
+
+    pub fn bool(b: bool) -> Value {
+        Value::Boolean(b)
+    }
+
+    pub fn char(ch: char) -> Value {
+        Value::Char(ch as u8)
+    }
+
     pub fn type_name(&self) -> &'static str {
         match self {
             Self::Number(_) => "Number",
