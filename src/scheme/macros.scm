@@ -298,3 +298,23 @@
             (let ((result (proc port)))
                     (close-output-port port)
                     result))))
+
+(define (make-promise expr)
+    (let ((ready? #f)
+          (result #f))
+        (lambda ()
+            (debug "ready? " ready?)
+            (if ready? 
+                result
+                (begin (set! result (expr))
+                    (set! ready? #t)
+                    result))))
+)
+ 
+(define-syntax delay 
+    (lambda (expr) 
+        `(make-promise (lambda () ,expr))
+    )
+)
+
+(define (force promise) (promise))
