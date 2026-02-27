@@ -4,6 +4,12 @@ use crate::{interp::Scheme, markset::MarkSet};
 
 pub type GcId = usize;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Location {
+    pub source: String,
+    pub lineno: usize,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum SchemeError {
     EvalError(String),
@@ -19,7 +25,7 @@ pub enum SchemeError {
     IOError(String),
     OutOfMemoryError(String),
     UnsupportedError(String),
-    // Other error types can be added here
+    At(Location, Box<SchemeError>), // Other error types can be added here
 }
 
 impl SchemeError {
@@ -38,14 +44,22 @@ impl SchemeError {
             SchemeError::IOError(m) => ("I/O error", m),
             SchemeError::OutOfMemoryError(m) => ("Out of memory error", m),
             SchemeError::UnsupportedError(m) => ("Unsupported feature", m),
+            SchemeError::At(_, error) => ("Located error", error.get_infos().1),
         }
     }
 }
 
 impl fmt::Display for SchemeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (label, message) = self.get_infos();
-        write!(f, "[{}]: {}", label, message)
+        match self {
+            SchemeError::At(location, error) => {
+                write!(f, "At {}:{}: {}", location.source, location.lineno, error)
+            }
+            _ => {
+                let (label, message) = self.get_infos();
+                write!(f, "[{}]: {}", label, message)
+            }
+        }
     }
 }
 
@@ -210,11 +224,58 @@ impl std::ops::Rem for Number {
 }
 
 impl Number {
-    pub fn sqrt(&self) -> Number {
+    pub fn to_f64(&self) -> f64 {
         match self {
-            Number::Int(n) => Number::Float((*n as f64).sqrt()),
-            Number::Float(f) => Number::Float(f.sqrt()),
+            Number::Int(i) => *i as f64,
+            Number::Float(f) => *f,
         }
+    }
+
+    pub fn floor(&self) -> Number {
+        Number::Float(self.to_f64().floor())
+    }
+
+    pub fn sqrt(&self) -> Number {
+        Number::Float(self.to_f64().sqrt())
+    }
+
+    pub fn log(&self) -> Number {
+        Number::Float(self.to_f64().ln())
+    }
+
+    pub fn expt(&self, exp: Number) -> Number {
+        match (self, exp) {
+            (Number::Int(b), Number::Int(e)) if e >= 0 => {
+                let result = b.checked_pow(e as u32);
+                if let Some(value) = result {
+                    Number::Int(value)
+                } else {
+                    Number::Float(self.to_f64().powf(exp.to_f64()))
+                }
+            }
+            (Number::Int(b), Number::Int(e)) if e < 0 => Number::Float((*b as f64).powf(e as f64)),
+            (b, e) => Number::Float(b.to_f64().powf(e.to_f64())),
+        }
+    }
+
+    pub fn sin(&self) -> Number {
+        Number::Float(self.to_f64().sin())
+    }
+
+    pub fn cos(&self) -> Number {
+        Number::Float(self.to_f64().cos())
+    }
+
+    pub fn tan(&self) -> Number {
+        Number::Float(self.to_f64().tan())
+    }
+
+    pub fn atan(&self) -> Number {
+        Number::Float(self.to_f64().atan())
+    }
+
+    pub fn atan2(&self, other: Number) -> Number {
+        Number::Float(self.to_f64().atan2(other.to_f64()))
     }
 }
 impl PartialOrd for Number {

@@ -196,13 +196,6 @@ fn primitive_number_min(
     EvalResult::number(ret)
 }
 
-fn primitive_sqt(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    let value = interp.to_number(args[0])?;
-
-    EvalResult::number(value.sqrt())
-}
-
 fn gcd_two(a: i64, b: i64) -> i64 {
     let mut a = a.abs();
     let mut b = b.abs();
@@ -293,6 +286,62 @@ fn primitive_round(
     }
 }
 
+fn primitive_sqt(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 1);
+    let value = interp.to_number(args[0])?;
+
+    EvalResult::number(value.sqrt())
+}
+
+fn primitive_log(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
+    extract_args!(args, 1, number: Number);
+    EvalResult::number(number.log())
+}
+
+fn primitive_floor(
+    _interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    extract_args!(args, 1, number: Number);
+    EvalResult::number(number.floor())
+}
+
+fn primitive_expt(
+    _interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    extract_args!(args, 2, base: Number, exp: Number);
+    EvalResult::number(base.expt(*exp))
+}
+
+fn primitive_sin(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
+    extract_args!(args, 1, number: Number);
+    EvalResult::number(number.sin())
+}
+
+fn primitive_cos(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
+    extract_args!(args, 1, number: Number);
+    EvalResult::number(number.cos())
+}
+
+fn primitive_tan(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
+    extract_args!(args, 1, number: Number);
+    EvalResult::number(number.tan())
+}
+
+fn primitive_atan(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
+    check_arity_range!(args, 1, 2);
+    let first = interp.to_number(args[0])?;
+    if args.len() == 1 {
+        EvalResult::number(first.atan())
+    } else {
+        let second = interp.to_number(args[1])?;
+        EvalResult::number(first.atan2(second))
+    }
+}
+
 pub fn register(interp: &Scheme) {
     interp.define_primitive("number?", primitive_number_p);
     interp.define_primitive("integer?", primitive_integer_p);
@@ -312,9 +361,16 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("max", primitive_number_max);
     interp.define_primitive("min", primitive_number_min);
     interp.define_primitive("gcd", primitive_gcd);
-    interp.define_primitive("sqt", primitive_sqt);
     interp.define_primitive("number->string", primitive_number_to_string);
     interp.define_primitive("exact->inexact", primitive_exact_to_inexact);
     interp.define_primitive("inexact->exact", primitive_inexact_to_exact);
     interp.define_primitive("round", primitive_round);
+    interp.define_primitive("floor", primitive_floor);
+    interp.define_primitive("log", primitive_log);
+    interp.define_primitive("expt", primitive_expt);
+    interp.define_primitive("sqt", primitive_sqt);
+    interp.define_primitive("sin", primitive_sin);
+    interp.define_primitive("cos", primitive_cos);
+    interp.define_primitive("tab", primitive_tan);
+    interp.define_primitive("atan", primitive_atan);
 }
