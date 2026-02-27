@@ -1,30 +1,38 @@
 use std::io::{BufReader, Bytes, Cursor, Read};
 use std::iter::Peekable;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::heap::Handle;
 use crate::interp::Scheme;
-use crate::types::{Number, SchemeError, Value};
+use crate::types::{Location, Number, SchemeError, Value};
 
 pub struct Parser<'a> {
-    path: Option<PathBuf>,
-    lineno: i64,
+    location: Location,
+    last_location: Location,
     reader: Peekable<Bytes<Box<dyn Read + 'a>>>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(reader: Box<dyn Read + 'a>) -> Self {
-        Self {
-            path: None,
+        let location = Location {
+            source: "unknown".to_string(),
             lineno: 1,
+        };
+        Self {
+            location: location.clone(),
+            last_location: location.clone(),
             reader: reader.bytes().peekable(),
         }
     }
 
-    fn new_with_name(path: Option<PathBuf>, reader: Box<dyn Read + 'a>) -> Self {
-        Self {
-            path,
+    fn new_with_name(source: &str, reader: Box<dyn Read + 'a>) -> Self {
+        let location = Location {
+            source: source.to_string(),
             lineno: 1,
+        };
+        Self {
+            location: location.clone(),
+            last_location: location.clone(),
             reader: reader.bytes().peekable(),
         }
     }
@@ -39,19 +47,19 @@ impl<'a> Parser<'a> {
 
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, SchemeError> {
         let path = path.as_ref();
+        let source = path.to_str().unwrap_or("<invalid-path>");
         let file =
             std::fs::File::open(path).map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
         let buffered = BufReader::new(file);
         let reader: Box<dyn Read + 'a> = Box::new(buffered);
-        Ok(Parser::new_with_name(Some(path.to_path_buf()), reader))
-    }
-
-    pub fn from_string_with_name(path: Option<PathBuf>, content: &'a str) -> Self {
-        Parser::new_with_name(path, Box::new(Cursor::new(content)) as Box<dyn Read + 'a>)
+        Ok(Parser::new_with_name(source, reader))
     }
 
     pub fn from_string(content: &'a str) -> Self {
-        Parser::from_string_with_name(None, content)
+        Parser::new_with_name(
+            "<string>",
+            Box::new(Cursor::new(content)) as Box<dyn Read + 'a>,
+        )
     }
 
     fn peek(&mut self) -> Option<u8> {
@@ -63,20 +71,15 @@ impl<'a> Parser<'a> {
         if let Some(lf) = ch
             && lf == b'\n'
         {
-            self.lineno += 1;
+            self.location.lineno += 1;
         }
         ch
     }
 
     fn syntax_error<T>(&self, msg: String) -> Result<T, SchemeError> {
-        let path_str = if let Some(ref path) = self.path {
-            path.to_string_lossy().to_string()
-        } else {
-            "unknown".to_string()
-        };
         Err(SchemeError::SyntaxError(format!(
             "{}:{}: syntax error: {}",
-            path_str, self.lineno, msg
+            self.location.source, self.location.lineno, msg
         )))
     }
 
@@ -398,8 +401,16 @@ impl<'a> Parser<'a> {
     }
 
     pub fn read(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
-        // dbg!(self.lineno);
+        self.last_location = self.location.clone();
         self.do_read(interp)
+    }
+
+    pub fn last_location(&self) -> &Location {
+        &self.last_location
+    }
+
+    pub fn current_location(&self) -> &Location {
+        &self.location
     }
 }
 

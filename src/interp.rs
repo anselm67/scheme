@@ -72,7 +72,7 @@ pub struct SchemeOptions {
 impl SchemeOptions {
     pub fn new() -> Self {
         Self {
-            heap_size: 128 * 1024,
+            heap_size: 256 * 1024,
             init_scheme: true,
             debug_macro: false,
         }
@@ -181,7 +181,7 @@ impl Scheme {
 
     fn init_scheme(&self) {
         let text = include_str!("scheme/macros.scm");
-        let mut parser = Parser::from_string_with_name(Some("macros.scm".into()), text);
+        let mut parser = Parser::from_string(text);
         if let Err(e) = self.load_from_parser(&mut parser) {
             panic!("Init from scheme/macros.scm failed: {}", e);
         }
@@ -954,7 +954,13 @@ impl Scheme {
 
     pub fn load<P: AsRef<Path>>(&self, path: P) -> Result<Value, SchemeError> {
         let mut parser = Parser::from_file(path)?;
-        self.load_from_parser(&mut parser)
+        match self.load_from_parser(&mut parser) {
+            Err(error) => {
+                let location = parser.last_location().clone();
+                Err(SchemeError::At(location, Box::new(error)))
+            }
+            any => any,
+        }
     }
 
     pub fn gc(&self, env: Option<Value>) {
