@@ -737,7 +737,7 @@ impl Scheme {
             .expect("to_env value isn't an Object.");
         match self.heap.borrow().get(id) {
             HeapObject::Env(env) => env.clone(),
-            _ => panic!("to_env: got a {}.", value.type_name()),
+            x => panic!("to_env {id} : got a {}.", x.type_name()),
         }
     }
 
