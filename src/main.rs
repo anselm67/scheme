@@ -35,7 +35,7 @@ fn repl(interp: &Scheme) {
         match readline {
             Ok(line) => {
                 let _ = rl.add_history_entry(line.as_str());
-                let mut parser = Parser::new(line.as_bytes());
+                let mut parser = Parser::from_string(&line);
                 let expr = parser.read(interp);
                 match expr {
                     Ok(expr) => eval_expr(interp, expr.value()),

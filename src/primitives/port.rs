@@ -265,11 +265,9 @@ fn primitive_write_char(
     let ch;
     if args.len() == 1 {
         ch = interp.to_char(args[0])?;
-    } else
-    /* args.len() == 2 */
-    {
-        output = interp.to_output_port(args[0])?;
-        ch = interp.to_char(args[1])?;
+    } else {
+        ch = interp.to_char(args[0])?;
+        output = interp.to_output_port(args[1])?;
     }
 
     let mut guard = output.port.borrow_mut();
@@ -290,7 +288,7 @@ fn primitive_read(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalRe
     }
     let mut borrow = input.borrow_mut();
     if let Some(ref mut reader) = *borrow {
-        let mut parser = Parser::new(reader);
+        let mut parser = Parser::from_borrowed(reader.as_mut());
         let expr = parser.read(interp)?;
         EvalResult::done(expr.value())
     } else {

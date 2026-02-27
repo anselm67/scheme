@@ -15,7 +15,7 @@ fn eval_expr(interp: &Scheme, expr: Value) {
 
 fn check_exprs(interp: &Scheme, inputs: &Vec<(&str, Value)>) {
     for (text, expected) in inputs {
-        let mut parser = Parser::new(text.as_bytes());
+        let mut parser = Parser::from_string(text);
         let expr = parser.read(&interp);
         match expr {
             Ok(expr) => match interp.eval(interp.env, expr.value()) {
@@ -29,7 +29,7 @@ fn check_exprs(interp: &Scheme, inputs: &Vec<(&str, Value)>) {
 
 fn check_errors(interp: &Scheme, inputs: &Vec<(&str, SchemeError)>) {
     for (text, expected) in inputs {
-        let mut parser = Parser::new(text.as_bytes());
+        let mut parser = Parser::from_string(text);
         if let Ok(expr) = parser.read(&interp) {
             match interp.eval(interp.env, expr.value()) {
                 Ok(_) => panic!("Failure was expected, but success happened!"),

@@ -179,7 +179,12 @@
             (loop (map-cdrs lists) (cons (apply proc (map-cars lists)) acc))))
 )
  
-(define (newline) (display "\n"))
+(define (newline . port) 
+    (if (null? port)
+        (display "\n")
+        (display "\n" (car port)))
+)
+
 
 (define (boolean? stuff) (or (eq? stuff #t) (eq? stuff #f)))
 

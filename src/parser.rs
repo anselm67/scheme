@@ -1,4 +1,4 @@
-use std::io::{BufReader, Bytes, Read};
+use std::io::{BufReader, Bytes, Cursor, Read};
 use std::iter::Peekable;
 use std::path::{Path, PathBuf};
 
@@ -6,27 +6,52 @@ use crate::heap::Handle;
 use crate::interp::Scheme;
 use crate::types::{Number, SchemeError, Value};
 
-pub struct Parser<R: Read> {
+pub struct Parser<'a> {
     path: Option<PathBuf>,
     lineno: i64,
-    reader: Peekable<Bytes<BufReader<R>>>,
+    reader: Peekable<Bytes<Box<dyn Read + 'a>>>,
 }
 
-impl<R: Read> Parser<R> {
-    pub fn new(reader: R) -> Self {
+impl<'a> Parser<'a> {
+    pub fn new(reader: Box<dyn Read + 'a>) -> Self {
         Self {
             path: None,
             lineno: 1,
-            reader: BufReader::new(reader).bytes().peekable(),
+            reader: reader.bytes().peekable(),
         }
     }
 
-    pub fn new_with_name(name: PathBuf, reader: R) -> Self {
+    fn new_with_name(path: Option<PathBuf>, reader: Box<dyn Read + 'a>) -> Self {
         Self {
-            path: Some(name),
+            path,
             lineno: 1,
-            reader: BufReader::new(reader).bytes().peekable(),
+            reader: reader.bytes().peekable(),
         }
+    }
+
+    pub fn from_reader(reader: Box<dyn Read + 'a>) -> Self {
+        Parser::new(reader)
+    }
+
+    pub fn from_borrowed(reader: &'a mut dyn Read) -> Self {
+        Parser::new(Box::new(reader))
+    }
+
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, SchemeError> {
+        let path = path.as_ref();
+        let file =
+            std::fs::File::open(path).map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
+        let buffered = BufReader::new(file);
+        let reader: Box<dyn Read + 'a> = Box::new(buffered);
+        Ok(Parser::new_with_name(Some(path.to_path_buf()), reader))
+    }
+
+    pub fn from_string_with_name(path: Option<PathBuf>, content: &'a str) -> Self {
+        Parser::new_with_name(path, Box::new(Cursor::new(content)) as Box<dyn Read + 'a>)
+    }
+
+    pub fn from_string(content: &'a str) -> Self {
+        Parser::from_string_with_name(None, content)
     }
 
     fn peek(&mut self) -> Option<u8> {
@@ -204,7 +229,9 @@ impl<R: Read> Parser<R> {
             if ch.is_alphanumeric() {
                 self.next();
                 token.push(ch);
-            } else if matches!(ch, ' ' | ';' | '(' | '.' | ')' | '*' | '?') && token.is_empty() {
+            } else if matches!(ch, ' ' | ';' | '(' | '.' | ')' | '*' | '?' | '\\' | '"')
+                && token.is_empty()
+            {
                 self.next();
                 token.push(ch);
                 break;
@@ -376,19 +403,6 @@ impl<R: Read> Parser<R> {
     }
 }
 
-impl Parser<std::fs::File> {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, SchemeError> {
-        let path = path.as_ref();
-        let file =
-            std::fs::File::open(path).map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
-        Ok(Self {
-            path: Some(path.to_path_buf()),
-            lineno: 1,
-            reader: BufReader::new(file).bytes().peekable(),
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::interp::SchemeOptions;
@@ -409,7 +423,7 @@ mod tests {
             Value::Number(Number::Float(-1.5e-3)),
         ];
         for (input, expect) in inputs.iter().zip(expected.iter()) {
-            let mut parser = Parser::new(input.as_bytes());
+            let mut parser = Parser::from_string(input);
             let result = parser.parse_number(&interp).unwrap();
             assert_eq!(&result.value(), expect);
         }
@@ -435,7 +449,7 @@ mod tests {
         ];
         let interp = Scheme::new(&SchemeOptions::new());
         for (text, value) in ok_inputs {
-            let mut parser = Parser::new(text.as_bytes());
+            let mut parser = Parser::from_string(text);
             assert_eq!(
                 value,
                 parser.parse_hash(&interp).expect("valid input").value()
@@ -448,7 +462,7 @@ mod tests {
         let interp = Scheme::new(&SchemeOptions::new());
         let inputs = vec!["some-symbol"];
         for text in inputs {
-            let mut parser = Parser::new(text.as_bytes());
+            let mut parser = Parser::from_string(text);
             let result = parser.parse_symbol(&interp);
             assert!(matches!(
                 result.expect("valid symbol").value(),
@@ -462,7 +476,7 @@ mod tests {
         let interp = Scheme::new(&SchemeOptions::new());
         let inputs = vec!["\"Hello World\""];
         for text in inputs {
-            let mut parser = Parser::new(text.as_bytes());
+            let mut parser = Parser::from_string(text);
             let result = parser.parse_string(&interp);
             assert!(matches!(
                 result.expect("valid string").value(),
@@ -476,7 +490,7 @@ mod tests {
         let interp = Scheme::new(&SchemeOptions::new());
         let inputs = vec!["1 . 2)", ")", "1 2 3)"];
         for text in inputs {
-            let mut parser = Parser::new(text.as_bytes());
+            let mut parser = Parser::from_string(text);
             let result = parser.parse_list(&interp);
             assert!(result.is_ok());
         }

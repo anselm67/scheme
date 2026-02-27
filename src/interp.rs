@@ -1,6 +1,6 @@
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -181,7 +181,7 @@ impl Scheme {
 
     fn init_scheme(&self) {
         let text = include_str!("scheme/macros.scm");
-        let mut parser = Parser::new_with_name("macros.scm".into(), text.as_bytes());
+        let mut parser = Parser::from_string_with_name(Some("macros.scm".into()), text);
         if let Err(e) = self.load_from_parser(&mut parser) {
             panic!("Init from scheme/macros.scm failed: {}", e);
         }
@@ -938,7 +938,7 @@ impl Scheme {
         }
     }
 
-    fn load_from_parser<R: Read>(&self, parser: &mut Parser<R>) -> Result<Value, SchemeError> {
+    fn load_from_parser(&self, parser: &mut Parser) -> Result<Value, SchemeError> {
         let mut retval = Value::Eof;
         loop {
             let handle = parser.read(self)?;
