@@ -31,6 +31,8 @@ pub struct Scheme {
     unquote_splicing: Value,
     apply: Value,
     vector: Value,
+
+    empty_string: Handle,
 }
 
 struct PortGuard<'a> {
@@ -135,6 +137,10 @@ impl Scheme {
                     .1,
             )
         };
+        let empty_string = {
+            let mut heap = heap_handle.borrow_mut();
+            heap.raw_alloc_string("").expect("Init empty string.")
+        };
         let interp = Self {
             heap: heap_handle,
             env: env.value(),
@@ -150,6 +156,8 @@ impl Scheme {
             unquote_splicing: unquote_splicing.value(),
             apply: apply.value(),
             vector: vector.value(),
+
+            empty_string: empty_string,
         };
         interp.init(options);
         interp
@@ -458,6 +466,10 @@ impl Scheme {
             interp: self,
         };
         wrapper.to_string()
+    }
+
+    pub fn empty_string(&self) -> Value {
+        self.empty_string.value()
     }
 
     pub fn is_nil(&self, value: Value) -> bool {

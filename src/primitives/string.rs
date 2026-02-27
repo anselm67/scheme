@@ -66,13 +66,17 @@ fn primitive_list_to_string(
     _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
-    extract_args!(args, 1, _id: Object);
-    let chars = interp.fold_list(args[0], String::new(), |mut acc, item| {
-        let ch = interp.to_char(item)?;
-        acc.push(ch);
-        Ok(acc)
-    })?;
-    EvalResult::done(interp.alloc_string(&chars).value())
+    check_arity!(args, 1);
+    if args[0] == Value::Nil {
+        EvalResult::done(interp.empty_string())
+    } else {
+        let chars = interp.fold_list(args[0], String::new(), |mut acc, item| {
+            let ch = interp.to_char(item)?;
+            acc.push(ch);
+            Ok(acc)
+        })?;
+        EvalResult::done(interp.alloc_string(&chars).value())
+    }
 }
 
 fn primitive_string_length(

@@ -101,12 +101,16 @@ fn primitive_list_to_vector(
     _env: Value,
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
-    extract_args!(args, 1, _id: Object);
-    let items = interp.fold_list(args[0], vec![], |mut acc, item| {
-        acc.push(item);
-        Ok(acc)
-    })?;
-    EvalResult::done(interp.alloc_vector(&items).value())
+    check_arity!(args, 1);
+    if args[0] == Value::Nil {
+        EvalResult::done(interp.alloc_vector(&[]).value())
+    } else {
+        let items = interp.fold_list(args[0], vec![], |mut acc, item| {
+            acc.push(item);
+            Ok(acc)
+        })?;
+        EvalResult::done(interp.alloc_vector(&items).value())
+    }
 }
 
 fn primitive_vector_fill(
