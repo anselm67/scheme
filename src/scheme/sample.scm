@@ -22,3 +22,13 @@
 (define (gc-death) 
     (let loop () (begin (load "src/scheme/macros.scm") (heap-stats) (loop)))
 )
+
+(define (diff a b) 
+    (cond ((and (null? a) (null? b)) #t)
+          ((and (pair? a) (pair? b)) 
+            (if (equal? (car a) (car b)) 
+                (verbose-equal? (cdr a) (cdr b))
+                (debug "car a: " (car a) "\ncar b: " (car b))))
+            (else (debug "a: " (car a) "b: " (car b))))
+)
+
