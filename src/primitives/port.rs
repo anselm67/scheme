@@ -64,10 +64,7 @@ fn primitive_close_input_port(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let input = interp.to_input_port(args[0])?;
-    let reader = input.borrow_mut().take();
-    if !reader.is_none() {
-        println!("File closed.");
-    }
+    let _ = input.borrow_mut().take();
     EvalResult::done(Value::Nil)
 }
 
