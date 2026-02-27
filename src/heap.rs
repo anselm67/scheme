@@ -824,6 +824,7 @@ impl SchemeObject for GcId {
                     '\n' => write!(f, "\\n"),
                     '\t' => write!(f, "\\t"),
                     '\r' => write!(f, "\\r"),
+                    '"' => write!(f, "\\\""),
                     _ => write!(f, "{}", ch),
                 })?;
                 write!(f, "{}", "\"")
