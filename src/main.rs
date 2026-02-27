@@ -1,3 +1,4 @@
+use clap::ArgAction;
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 use scheme::parser::Parser;
@@ -80,6 +81,10 @@ struct Arg {
     /// Initial heap size in number of objects.
     #[arg(short = 's', long, default_value_t = 256 * 1024)]
     heap_size: usize,
+
+    /// Expressions to be evaluated after files are loaded.
+    #[arg(short = 'e', long, action=ArgAction::Append)]
+    exprs: Vec<String>,
 }
 
 fn main() {
@@ -99,6 +104,9 @@ fn main() {
             }
             _ => {}
         }
+    }
+    for expr in &arg.exprs {
+        let _ = interp.eval_string(expr);
     }
     repl(&interp);
 }

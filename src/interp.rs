@@ -1035,4 +1035,11 @@ impl Scheme {
             );
         }
     }
+
+    pub fn eval_string(&self, expr: &str) -> Result<Value, SchemeError> {
+        let mut parser = Parser::from_string(expr);
+        let expr = parser.read(self)?;
+        self.expand(expr.value())
+            .and_then(|expanded| self.eval(self.env, expanded.value()))
+    }
 }
