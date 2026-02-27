@@ -207,7 +207,7 @@
 (define (zero? num) (= num 0))
 (define (negative? num) (< num 0))
 (define (positive? num) (> num 0))
-(define (complex? num) #f)
+(define (complex? num) (number? num))
 (define (real? num) (number? num))
 (define (rational? num) (number? num))
 (define (exact? num) (integer? num))
