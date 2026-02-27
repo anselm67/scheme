@@ -78,7 +78,7 @@ struct Arg {
     verbose_gc: bool,
 
     /// Initial heap size in number of objects.
-    #[arg(short = 's', long, default_value_t = 8192)]
+    #[arg(short = 's', long, default_value_t = 256 * 1024)]
     heap_size: usize,
 }
 
