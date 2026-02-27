@@ -485,13 +485,38 @@ impl Scheme {
         matches!(value, Value::Nil)
     }
 
+    /// This is very expensive!
     pub fn is_list(&self, value: Value) -> bool {
-        if let Some(id) = self.is_object(value) {
-            matches!(self.heap.borrow().get(id), HeapObject::Pair(..))
-        } else if matches!(value, Value::Nil) {
-            true
+        if value == Value::Nil {
+            return true;
+        }
+        if let Some(..) = self.is_pair(value) {
+            let mut slow = value;
+            let mut fast = value;
+            loop {
+                // fast moves two steps.
+                for _ in 0..2 {
+                    if fast == Value::Nil {
+                        return true;
+                    } else if let Some((_, next)) = self.is_pair(fast) {
+                        fast = next;
+                    } else {
+                        return false;
+                    }
+                }
+                // slow moves one step.
+                if let Some((_, next)) = self.is_pair(slow) {
+                    slow = next;
+                } else {
+                    return false;
+                }
+                // Checks for a circular list.
+                if slow == fast {
+                    return false;
+                }
+            }
         } else {
-            false
+            return false;
         }
     }
 
