@@ -21,6 +21,7 @@ pub struct Scheme {
 
     // Misc control flags
     pub debug_macro: bool,
+    verbose_gc: bool,
 
     // Some symbols we want to keeep track of:
     append: Value,
@@ -69,6 +70,7 @@ pub struct SchemeOptions {
     heap_size: usize,
     init_scheme: bool,
     debug_macro: bool,
+    verbose_gc: bool,
 }
 
 impl SchemeOptions {
@@ -77,6 +79,7 @@ impl SchemeOptions {
             heap_size: 256 * 1024,
             init_scheme: true,
             debug_macro: false,
+            verbose_gc: false,
         }
     }
     pub fn set_init_scheme(mut self, init: bool) -> Self {
@@ -91,6 +94,11 @@ impl SchemeOptions {
 
     pub fn set_debug_macro(mut self, debug_macro: bool) -> Self {
         self.debug_macro = debug_macro;
+        self
+    }
+
+    pub fn set_verbose_gc(mut self, verbose_gc: bool) -> Self {
+        self.verbose_gc = verbose_gc;
         self
     }
 }
@@ -148,6 +156,8 @@ impl Scheme {
             output_stack: RefCell::new(vec![]),
 
             debug_macro: options.debug_macro,
+            verbose_gc: options.verbose_gc,
+
             list: list.value(),
             append: append.value(),
             quote: quote.value(),
@@ -206,7 +216,6 @@ impl Scheme {
         if let Ok(result) = alloc_fn(&mut self.heap.borrow_mut()) {
             return result;
         }
-        println!("GC Trigered: Out of memory.");
         self.gc(None);
         alloc_fn(&mut self.heap.borrow_mut()).expect("Out of memory after GC.")
     }
@@ -991,12 +1000,14 @@ impl Scheme {
         let mut heap = self.heap.borrow_mut();
         let collected = heap.sweep(&marks);
 
-        println!(
-            "gc: protected {}, marked {} /{} objects, collected {}.",
-            heap.get_protected_count(),
-            marks.count(),
-            len,
-            collected
-        );
+        if self.verbose_gc {
+            println!(
+                "gc: protected {}, marked {} /{} objects, collected {}.",
+                heap.get_protected_count(),
+                marks.count(),
+                len,
+                collected
+            );
+        }
     }
 }

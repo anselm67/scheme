@@ -73,6 +73,10 @@ struct Arg {
     #[arg(long)]
     debug_macro: bool,
 
+    /// Display memory stats when the garbage collector runs.
+    #[arg(long)]
+    verbose_gc: bool,
+
     /// Initial heap size in number of objects.
     #[arg(short = 's', long, default_value_t = 8192)]
     heap_size: usize,
@@ -83,6 +87,7 @@ fn main() {
     let options = SchemeOptions::new()
         .set_init_scheme(arg.init)
         .set_debug_macro(arg.debug_macro)
+        .set_verbose_gc(arg.verbose_gc)
         .set_heap_size(arg.heap_size);
 
     let interp = Scheme::new(&options);
