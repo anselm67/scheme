@@ -11,7 +11,7 @@ use crate::{
     env::Env,
     interp::Scheme,
     markset::MarkSet,
-    types::{EvalResult, GcId, SchemeError, SchemeObject, Value},
+    types::{EvalResult, GcId, Number, SchemeError, SchemeObject, Value},
 };
 
 pub type PrimitiveFn = fn(&Scheme, env: Value, &[Value]) -> Result<EvalResult, SchemeError>;
@@ -309,6 +309,14 @@ impl Handle {
         }
     }
 
+    pub fn from_number(number: Number) -> Handle {
+        Handle::from_value(Value::Number(number))
+    }
+
+    pub fn from_int(i: i64) -> Handle {
+        Handle::from_value(Value::Number(Number::Int(i)))
+    }
+
     pub fn value(&self) -> Value {
         match &self.inner {
             HandleKind::Id { id, .. } => Value::Object(*id),
@@ -464,6 +472,17 @@ impl Heap {
 
     pub fn get(&self, id: GcId) -> &HeapObject {
         &self.objects[id]
+    }
+
+    pub fn checked_get(&self, id: GcId) -> Result<&HeapObject, SchemeError> {
+        if id >= self.objects.len() {
+            Err(SchemeError::IndexOutOfBounds(format!(
+                "Object ids should be within 0..{}",
+                self.objects.len()
+            )))
+        } else {
+            Ok(&self.objects[id])
+        }
     }
 
     pub fn get_mut(&mut self, id: GcId) -> &mut HeapObject {
@@ -875,7 +894,7 @@ impl SchemeObject for GcId {
             }
             HeapObject::Symbol(s) => write!(f, "{}", s),
             HeapObject::String(s) => write!(f, "{}", s.borrow()),
-            HeapObject::Primitive(pr) => write!(f, "<{:}\\>", pr.name),
+            HeapObject::Primitive(pr) => write!(f, "<{}>", pr.name),
             HeapObject::Closure(_) => write!(f, "<closure {}>", id),
             HeapObject::NaryClosure(_) => write!(f, "<n-closure {}>", id),
             HeapObject::InputPort(_) => write!(f, "<input-port {}>", id),

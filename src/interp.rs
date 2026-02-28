@@ -813,6 +813,56 @@ impl Scheme {
         }
     }
 
+    fn peek_value(&self, value: Value) -> Result<Handle, SchemeError> {
+        match value {
+            Value::Object(id) => {
+                let heap = self.heap.borrow();
+                Ok(heap.handle(Value::int(id as i64)))
+            }
+            Value::Number(Number::Int(i)) => Ok(self.alloc_string(format!("Int({})", i))),
+            Value::Number(Number::Float(f)) => Ok(self.alloc_string(format!("Float({})", f))),
+            Value::Char(ch) => Ok(self.alloc_string(format!("Char({})", ch as char))),
+            Value::Boolean(bool) => Ok(self.alloc_string(format!("Bool({})", bool))),
+            Value::Nil => Ok(self.alloc_string(format!("()"))),
+            Value::Unbound => Ok(self.alloc_string(format!("*unbound*"))),
+            Value::Eof => Ok(self.alloc_string(format!("EoF"))),
+        }
+    }
+    pub fn peek(&self, id: GcId) -> Result<Handle, SchemeError> {
+        let obj = {
+            let heap = self.heap.borrow();
+            heap.checked_get(id)?.clone()
+        };
+        match obj {
+            HeapObject::Pair(car, cdr) => {
+                Ok(self.alloc_pair_from_handles(self.peek_value(car)?, self.peek_value(cdr)?))
+            }
+            HeapObject::Vector(vector) => {
+                let items: Vec<Handle> = vector
+                    .borrow()
+                    .iter()
+                    .map(|item| self.peek_value(*item))
+                    .collect::<Result<Vec<_>, SchemeError>>()?;
+                Ok(self.alloc_vector_from_handles(&items))
+            }
+            HeapObject::Env(env) => {
+                let bindings: Vec<Handle> = env
+                    .borrow()
+                    .bindings
+                    .iter()
+                    .map(|(key, val)| {
+                        let car = Handle::from_int(*key as i64);
+                        self.peek_value(*val)
+                            .and_then(|val| Ok(self.alloc_pair_from_handles(car, val)))
+                    })
+                    .collect::<Result<Vec<_>, SchemeError>>()?;
+                Ok(self.alloc_vector_from_handles(&bindings))
+            }
+            HeapObject::FreeSlot(_) => Ok(self.alloc_string(format!("<free-slot {id}>"))),
+            _ => Ok(self.heap.borrow().handle(Value::Object(id))),
+        }
+    }
+
     pub fn quote(&self, obj: Value) -> Result<Handle, SchemeError> {
         let value = &[Value::Object(Keyword::Quote as usize), obj];
         Ok(self.alloc_list(value))

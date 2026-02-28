@@ -2,7 +2,7 @@ use std::process;
 
 use crate::{
     interp::Scheme,
-    types::{EvalResult, SchemeError, Value},
+    types::{EvalResult, GcId, SchemeError, Value},
 };
 
 fn primitive_gc(interp: &Scheme, env: Value, _args: &[Value]) -> Result<EvalResult, SchemeError> {
@@ -68,6 +68,14 @@ fn primitive_quit(
     }
 }
 
+// Mostly for debuging the GC.
+fn primitive_peek(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
+    check_arity!(args, 1);
+    let id = interp.to_integer(args[0])? as GcId;
+    let handle = interp.peek(id)?;
+    EvalResult::done(handle.value())
+}
+
 pub fn register(interp: &Scheme) {
     interp.define_primitive("gc", primitive_gc);
     interp.define_primitive("heap-stats", primitive_heap_stats);
@@ -75,4 +83,5 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("load", primitive_load);
     interp.define_primitive("quit", primitive_quit);
     interp.define_primitive("exit", primitive_quit);
+    interp.define_primitive("peek", primitive_peek);
 }
