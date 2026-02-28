@@ -1,4 +1,4 @@
-use std::io::{BufReader, Bytes, Cursor, Read};
+use std::io::{BufRead, BufReader, Bytes, Cursor, Read};
 use std::iter::Peekable;
 use std::path::Path;
 
@@ -9,11 +9,11 @@ use crate::types::{Location, Number, SchemeError, Value};
 pub struct Parser<'a> {
     location: Location,
     last_location: Location,
-    reader: Peekable<Bytes<Box<dyn Read + 'a>>>,
+    reader: Peekable<Bytes<Box<dyn BufRead + 'a>>>,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(reader: Box<dyn Read + 'a>) -> Self {
+    pub fn new(reader: Box<dyn BufRead + 'a>) -> Self {
         let location = Location {
             source: "unknown".to_string(),
             lineno: 1,
@@ -25,7 +25,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn new_with_name(source: &str, reader: Box<dyn Read + 'a>) -> Self {
+    fn new_with_name(source: &str, reader: Box<dyn BufRead + 'a>) -> Self {
         let location = Location {
             source: source.to_string(),
             lineno: 1,
@@ -37,11 +37,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn from_reader(reader: Box<dyn Read + 'a>) -> Self {
+    pub fn from_reader(reader: Box<dyn BufRead + 'a>) -> Self {
         Parser::new(reader)
     }
 
-    pub fn from_borrowed(reader: &'a mut dyn Read) -> Self {
+    pub fn from_borrowed(reader: &'a mut dyn BufRead) -> Self {
         Parser::new(Box::new(reader))
     }
 
@@ -51,14 +51,14 @@ impl<'a> Parser<'a> {
         let file =
             std::fs::File::open(path).map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
         let buffered = BufReader::new(file);
-        let reader: Box<dyn Read + 'a> = Box::new(buffered);
+        let reader: Box<dyn BufRead + 'a> = Box::new(buffered);
         Ok(Parser::new_with_name(source, reader))
     }
 
     pub fn from_string(content: &'a str) -> Self {
         Parser::new_with_name(
             "<string>",
-            Box::new(Cursor::new(content)) as Box<dyn Read + 'a>,
+            Box::new(Cursor::new(content)) as Box<dyn BufRead + 'a>,
         )
     }
 

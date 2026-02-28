@@ -93,6 +93,30 @@ fn primitive_read_char(
     }
 }
 
+fn primitive_read_line(
+    interp: &Scheme,
+    _env: Value,
+    args: &[Value],
+) -> Result<EvalResult, SchemeError> {
+    let mut input = interp.get_input_port()?;
+    check_arity_range!(args, 0, 1);
+    if args.len() == 1 {
+        input = interp.to_input_port(args[0])?;
+    }
+    let mut borrow = input.borrow_mut();
+    if let Some(ref mut reader) = *borrow {
+        match reader.lines().next() {
+            Some(Result::Ok(line)) => EvalResult::done(interp.alloc_string(&line).value()),
+            Some(Result::Err(e)) => Err(SchemeError::from(e)),
+            None => EvalResult::done(Value::Eof),
+        }
+    } else {
+        Err(SchemeError::IOError(format!(
+            "Attempt to read from closed input port."
+        )))
+    }
+}
+
 fn primitive_peek_char(
     interp: &Scheme,
     _env: Value,
@@ -337,6 +361,7 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("close-output-port", primitive_close_output_port);
     interp.define_primitive("read", primitive_read);
     interp.define_primitive("read-char", primitive_read_char);
+    interp.define_primitive("read-line", primitive_read_line);
     interp.define_primitive("peek-char", primitive_peek_char);
     interp.define_primitive("eof-object?", primitive_eof_object);
     interp.define_primitive("write-char", primitive_write_char);
