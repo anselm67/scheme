@@ -1,6 +1,6 @@
 use crate::{
     interp::Scheme,
-    types::{EvalResult, Number, SchemeError, Value},
+    types::{EvalResult, SchemeError, Value},
 };
 
 fn primitive_char_p(
@@ -9,7 +9,7 @@ fn primitive_char_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_char(args[0]).is_some()))
+    EvalResult::bool(interp.is_char(args[0]).is_some())
 }
 
 fn primitive_char_alphabetic_p(
@@ -18,7 +18,7 @@ fn primitive_char_alphabetic_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    EvalResult::done(Value::Boolean((*ch as char).is_alphabetic()))
+    EvalResult::bool((*ch as char).is_alphabetic())
 }
 
 fn primitive_char_numeric_p(
@@ -27,7 +27,7 @@ fn primitive_char_numeric_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    EvalResult::done(Value::Boolean((*ch as char).is_digit(10)))
+    EvalResult::bool((*ch as char).is_digit(10))
 }
 
 fn primitive_char_whitespace_p(
@@ -36,7 +36,7 @@ fn primitive_char_whitespace_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    EvalResult::done(Value::Boolean(*ch == 9 || *ch == 10 || *ch == 32))
+    EvalResult::bool(*ch == 9 || *ch == 10 || *ch == 32)
 }
 
 fn primitive_char_upper_case_p(
@@ -45,7 +45,7 @@ fn primitive_char_upper_case_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    EvalResult::done(Value::Boolean((*ch as char).is_uppercase()))
+    EvalResult::bool((*ch as char).is_uppercase())
 }
 
 fn primitive_char_lower_case_p(
@@ -54,7 +54,7 @@ fn primitive_char_lower_case_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    EvalResult::done(Value::Boolean((*ch as char).is_lowercase()))
+    EvalResult::bool((*ch as char).is_lowercase())
 }
 
 fn primitive_char_to_integer(
@@ -63,7 +63,7 @@ fn primitive_char_to_integer(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    EvalResult::done(Value::Number(Number::Int(*ch as i64)))
+    EvalResult::int(*ch as i64)
 }
 
 fn primitive_integer_to_char(
@@ -73,7 +73,7 @@ fn primitive_integer_to_char(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let byte = interp.to_integer(args[0])?;
-    EvalResult::done(Value::Char(byte as u8))
+    EvalResult::char((byte as u8) as char)
 }
 
 fn primitive_char_upcase(
@@ -82,7 +82,7 @@ fn primitive_char_upcase(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    EvalResult::done(Value::Char((*ch as char).to_ascii_uppercase() as u8))
+    EvalResult::char((*ch as char).to_ascii_uppercase())
 }
 
 fn primitive_char_downcase(
@@ -91,7 +91,7 @@ fn primitive_char_downcase(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 1, ch: Char);
-    EvalResult::done(Value::Char((*ch as char).to_ascii_lowercase() as u8))
+    EvalResult::char((*ch as char).to_ascii_lowercase())
 }
 
 fn primitive_char_eq(
@@ -100,7 +100,7 @@ fn primitive_char_eq(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(ch1 == ch2))
+    EvalResult::bool(ch1 == ch2)
 }
 
 fn primitive_char_lt(
@@ -109,7 +109,7 @@ fn primitive_char_lt(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(ch1 < ch2))
+    EvalResult::bool(ch1 < ch2)
 }
 
 fn primitive_char_lte(
@@ -118,7 +118,7 @@ fn primitive_char_lte(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(ch1 <= ch2))
+    EvalResult::bool(ch1 <= ch2)
 }
 
 fn primitive_char_gt(
@@ -127,7 +127,7 @@ fn primitive_char_gt(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(ch1 > ch2))
+    EvalResult::bool(ch1 > ch2)
 }
 
 fn primitive_char_gte(
@@ -136,7 +136,7 @@ fn primitive_char_gte(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(ch1 >= ch2))
+    EvalResult::bool(ch1 >= ch2)
 }
 
 fn primitive_char_ci_eq(
@@ -145,9 +145,7 @@ fn primitive_char_ci_eq(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(
-        ch1.to_ascii_lowercase() == ch2.to_ascii_lowercase(),
-    ))
+    EvalResult::bool(ch1.to_ascii_lowercase() == ch2.to_ascii_lowercase())
 }
 
 fn primitive_char_ci_lt(
@@ -156,9 +154,7 @@ fn primitive_char_ci_lt(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(
-        ch1.to_ascii_lowercase() < ch2.to_ascii_lowercase(),
-    ))
+    EvalResult::bool(ch1.to_ascii_lowercase() < ch2.to_ascii_lowercase())
 }
 
 fn primitive_char_ci_lte(
@@ -167,9 +163,7 @@ fn primitive_char_ci_lte(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(
-        ch1.to_ascii_lowercase() <= ch2.to_ascii_lowercase(),
-    ))
+    EvalResult::bool(ch1.to_ascii_lowercase() <= ch2.to_ascii_lowercase())
 }
 
 fn primitive_char_ci_gt(
@@ -178,9 +172,7 @@ fn primitive_char_ci_gt(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(
-        ch1.to_ascii_lowercase() > ch2.to_ascii_lowercase(),
-    ))
+    EvalResult::bool(ch1.to_ascii_lowercase() > ch2.to_ascii_lowercase())
 }
 
 fn primitive_char_ci_gte(
@@ -189,9 +181,7 @@ fn primitive_char_ci_gte(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     extract_args!(args, 2, ch1: Char, ch2: Char);
-    EvalResult::done(Value::Boolean(
-        ch1.to_ascii_lowercase() >= ch2.to_ascii_lowercase(),
-    ))
+    EvalResult::bool(ch1.to_ascii_lowercase() >= ch2.to_ascii_lowercase())
 }
 
 pub fn register(interp: &Scheme) {
