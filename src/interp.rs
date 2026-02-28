@@ -181,7 +181,7 @@ impl Scheme {
 
         // Sets up stdout as the default output port.
         let boxed_writer: Box<dyn Write> = Box::new(BufWriter::new(std::io::stdout()));
-        let output_port = self.alloc_output_port(Rc::new(RefCell::new(Some(boxed_writer))));
+        let output_port = self.alloc_output_port(&RefCell::new(Some(boxed_writer)));
         self.output_stack.borrow_mut().push(output_port.value())
     }
 
@@ -293,8 +293,8 @@ impl Scheme {
         self.alloc_with_retry(|heap| heap.raw_alloc_input_port(input.clone()))
     }
 
-    pub fn alloc_output_port(&self, output: Rc<RefCell<Option<Box<dyn Write>>>>) -> Handle {
-        self.alloc_with_retry(|heap| heap.raw_alloc_output_port(output.clone()))
+    pub fn alloc_output_port(&self, output: &RefCell<Option<Box<dyn Write>>>) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_output_port(&output))
     }
 
     pub fn alloc_output_string_port(&self) -> Handle {
@@ -360,7 +360,7 @@ impl Scheme {
             panic!("No output port on the input stack!");
         }
     }
-    pub fn get_output_port(&self) -> Result<OutputPort, SchemeError> {
+    pub fn get_output_port(&self) -> Result<Rc<OutputPort>, SchemeError> {
         if let Some(value) = self.output_stack.borrow().last() {
             self.to_output_port(*value)
         } else {
@@ -691,7 +691,7 @@ impl Scheme {
         }
     }
 
-    pub fn to_output_port(&self, value: Value) -> Result<OutputPort, SchemeError> {
+    pub fn to_output_port(&self, value: Value) -> Result<Rc<OutputPort>, SchemeError> {
         let id = self.to_object(value)?;
         let heap = self.heap.borrow();
         match heap.get(id) {

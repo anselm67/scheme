@@ -50,9 +50,9 @@ impl std::io::Write for StringWriter {
     }
 }
 
-#[derive(Clone)]
 pub struct OutputPort {
-    pub port: Rc<RefCell<Option<Box<dyn Write>>>>,
+    pub port: RefCell<Option<Box<dyn Write>>>,
+    // The buffer is shared betwen the port and the writer.
     pub string_buffer: Option<Rc<RefCell<Vec<u8>>>>,
 }
 
@@ -67,8 +67,7 @@ pub enum HeapObject {
     Closure(Box<Closure>),
     NaryClosure(Box<Closure>),
     InputPort(Rc<RefCell<Option<Box<dyn BufRead>>>>),
-    // TODO => Rc and remove nested Rc
-    OutputPort(OutputPort),
+    OutputPort(Rc<OutputPort>),
     Env(Rc<RefCell<Env>>),
 }
 
@@ -618,13 +617,14 @@ impl Heap {
 
     pub fn raw_alloc_output_port(
         &mut self,
-        output: Rc<RefCell<Option<Box<dyn Write>>>>,
+        output: &RefCell<Option<Box<dyn Write>>>,
     ) -> Result<Handle, SchemeError> {
         let id = self.next_id()?;
-        self.objects[id] = HeapObject::OutputPort(OutputPort {
-            port: output,
+        let port_ref = output.borrow_mut().take().expect("");
+        self.objects[id] = HeapObject::OutputPort(Rc::new(OutputPort {
+            port: RefCell::new(Some(port_ref)),
             string_buffer: None,
-        });
+        }));
         Ok(self.handle_id(id))
     }
 
@@ -634,10 +634,10 @@ impl Heap {
         let writer = StringWriter {
             data: buffer.clone(),
         };
-        self.objects[id] = HeapObject::OutputPort(OutputPort {
-            port: Rc::new(RefCell::new(Some(Box::new(writer) as Box<dyn Write>))),
+        self.objects[id] = HeapObject::OutputPort(Rc::new(OutputPort {
+            port: RefCell::new(Some(Box::new(writer) as Box<dyn Write>)),
             string_buffer: Some(buffer.clone()),
-        });
+        }));
         Ok(self.handle_id(id))
     }
 

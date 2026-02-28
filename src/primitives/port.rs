@@ -166,8 +166,8 @@ fn primitive_open_output_file(
         ))
     })?;
     let writer: Box<dyn Write> = Box::new(BufWriter::new(file));
-    let output = Rc::new(RefCell::new(Some(writer)));
-    EvalResult::done(interp.alloc_output_port(output).value())
+    let output = RefCell::new(Some(writer));
+    EvalResult::done(interp.alloc_output_port(&output).value())
 }
 
 fn primitive_open_output_string(
@@ -190,7 +190,7 @@ fn primitive_get_output_string(
     if args.len() > 0 {
         output = interp.to_output_port(args[0])?;
     }
-    if let Some(buffer) = output.string_buffer {
+    if let Some(buffer) = &output.string_buffer {
         let bytes = buffer.borrow();
         let string = String::from_utf8_lossy(&bytes).into_owned();
         EvalResult::done(interp.alloc_string(string).value())
