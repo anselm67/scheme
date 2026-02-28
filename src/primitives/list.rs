@@ -23,7 +23,6 @@ fn primitive_append(
             if matches!(prev_cdr, Value::Nil) {
                 retval = *arg;
             } else {
-                debug_assert!(matches!(retval, Value::Object(_)));
                 let mut heap = interp.heap.borrow_mut();
                 heap.setcdr(interp.to_object(prev_cdr)?, *arg)?;
             }
@@ -31,11 +30,9 @@ fn primitive_append(
             let mut p = *arg;
             while let Ok((car, cdr)) = interp.to_pair(p) {
                 if matches!(retval, Value::Nil) {
-                    // TODO This can't  be right.
                     retval = interp.alloc_pair(car, Value::Nil).value();
                     prev_cdr = retval;
                 } else {
-                    // TODO This can't  be right.
                     let next = interp.alloc_pair(car, Value::Nil).value();
                     interp.setcdr(interp.to_object(prev_cdr)?, next)?;
                     prev_cdr = next;
@@ -102,30 +99,18 @@ fn primitive_null_p(
     EvalResult::done(Value::Boolean(interp.is_null(args[0])))
 }
 
-fn primitive_cons(
-    interp: &Scheme,
-    _env: Value,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_cons(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
     EvalResult::done(interp.alloc_pair(args[0], args[1]).value())
 }
 
-fn primitive_car(
-    interp: &Scheme,
-    _env: Value,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_car(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let (car, _) = interp.to_pair(args[0])?;
     EvalResult::done(car)
 }
 
-fn primitive_cdr(
-    interp: &Scheme,
-    _env: Value,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
+fn primitive_cdr(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let (_, cdr) = interp.to_pair(args[0])?;
     EvalResult::done(cdr)
