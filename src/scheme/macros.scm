@@ -50,10 +50,6 @@
 
 (define-syntax letrec
     (lambda (bindings . body)
-        ; TODO Once map is fixed, we can use:
-        ; (let ((vars (map car bindings)) (vals (cadr bindings)) 
-        ;     ...
-        ;     ,@(map (lambda (var val) (list 'set! var val)) vars vals)))
         `(let ,(map_one_ (lambda (varval) (list (car varval) ''*undefined*)) bindings) 
             ,@(map_one_ (lambda (varval) (list 'set! (car varval) (cadr varval))) bindings)
             ,@body)
