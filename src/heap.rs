@@ -484,7 +484,7 @@ impl Heap {
         }
     }
 
-    pub fn get_mut(&mut self, id: GcId) -> &mut HeapObject {
+    fn get_mut(&mut self, id: GcId) -> &mut HeapObject {
         &mut self.objects[id]
     }
 

@@ -1,6 +1,6 @@
 use crate::{
     interp::Scheme,
-    types::{EvalResult, Number, SchemeError, Value},
+    types::{EvalResult, SchemeError, Value},
 };
 
 fn primitive_list(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
