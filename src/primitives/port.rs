@@ -82,7 +82,7 @@ fn primitive_read_char(
     if let Some(ref mut reader) = *borrow {
         let mut buf = [0u8; 1];
         match reader.read_exact(&mut buf) {
-            Ok(_) => EvalResult::done(Value::Char(buf[0])),
+            Ok(_) => EvalResult::char(buf[0] as char),
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => EvalResult::done(Value::Eof),
             Err(e) => Err(SchemeError::IOError(format!("Read error {}", e))),
         }
@@ -131,7 +131,7 @@ fn primitive_peek_char(
     if let Some(ref mut reader) = *borrow {
         match reader.fill_buf() {
             Ok(b) if b.is_empty() => EvalResult::done(Value::Eof),
-            Ok(b) => EvalResult::done(Value::Char(b[0])),
+            Ok(b) => EvalResult::char(b[0] as char),
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => EvalResult::done(Value::Eof),
             Err(e) => Err(SchemeError::IOError(format!("Read error {}", e))),
         }
@@ -148,7 +148,7 @@ fn primitive_eof_object(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(args[0] == Value::Eof))
+    EvalResult::bool(args[0] == Value::Eof)
 }
 
 fn primitive_open_output_file(
@@ -330,7 +330,7 @@ where
         write!(port, "{}", func(obj))?;
         port.flush()?;
     }
-    EvalResult::done(Value::Boolean(true))
+    EvalResult::bool(true)
 }
 
 fn primitive_display(

@@ -10,7 +10,7 @@ fn primitive_string_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_string(args[0]).is_some()))
+    EvalResult::bool(interp.is_string(args[0]).is_some())
 }
 
 fn primitive_make_string(
@@ -24,11 +24,8 @@ fn primitive_make_string(
     if args.len() > 1 {
         fill_char = interp.to_char(args[1])?;
     }
-    EvalResult::done(
-        interp
-            .alloc_string(fill_char.to_string().repeat(count as usize))
-            .value(),
-    )
+    let handle = interp.alloc_string(fill_char.to_string().repeat(count as usize));
+    EvalResult::done(handle.value())
 }
 
 fn primitive_string(
@@ -86,7 +83,7 @@ fn primitive_string_length(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let string = interp.to_string(args[0])?;
-    EvalResult::done(Value::Number(Number::Int(string.borrow().len() as i64)))
+    EvalResult::int(string.borrow().len() as i64)
 }
 
 fn primitive_string_ref(
@@ -102,7 +99,7 @@ fn primitive_string_ref(
         && index < (string.len() as i64)
         && let Some(ch) = string.chars().nth(index as usize)
     {
-        EvalResult::done(Value::Char(ch as u8))
+        EvalResult::char(ch)
     } else {
         Err(SchemeError::IndexOutOfBounds(format!(
             "Index {} is not in 0..{}",
@@ -287,11 +284,8 @@ fn primitive_substring(
             string.len()
         )))
     } else {
-        EvalResult::done(
-            interp
-                .alloc_string(&string[start_index as usize..end_index as usize])
-                .value(),
-        )
+        let handle = interp.alloc_string(&string[start_index as usize..end_index as usize]);
+        EvalResult::done(handle.value())
     }
 }
 
@@ -321,7 +315,8 @@ fn primitive_string_fill(
     for _ in 0..count {
         string.push(ch);
     }
-    EvalResult::done(interp.alloc_string(&string[..]).value())
+    let handle = interp.alloc_string(&string[..]);
+    EvalResult::done(handle.value())
 }
 
 fn parse_integer(
@@ -346,7 +341,7 @@ fn parse_integer(
             Number::Int(value)
         }))
     } else {
-        EvalResult::done(Value::Boolean(false))
+        EvalResult::bool(false)
     }
 }
 
@@ -361,12 +356,12 @@ fn parse_float(
         )))
     } else if let Some(value) = input.parse().ok() {
         if exactness == Some(true) {
-            EvalResult::done(Value::Number(Number::Int(value as i64)))
+            EvalResult::int(value as i64)
         } else {
-            EvalResult::done(Value::Number(Number::Float(value)))
+            EvalResult::float(value)
         }
     } else {
-        EvalResult::done(Value::Boolean(false))
+        EvalResult::bool(false)
     }
 }
 

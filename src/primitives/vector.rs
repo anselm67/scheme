@@ -9,7 +9,7 @@ fn primitive_vector_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_vector(args[0]).is_some()))
+    EvalResult::bool(interp.is_vector(args[0]).is_some())
 }
 
 fn primitive_make_vector(
@@ -42,7 +42,7 @@ fn primitive_vector_length(
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
     let vector = interp.to_vector(args[0])?;
-    EvalResult::done(Value::Number(Number::Int(vector.borrow().len() as i64)))
+    EvalResult::int(vector.borrow().len() as i64)
 }
 
 fn primitive_vector_ref(

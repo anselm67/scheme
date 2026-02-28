@@ -41,7 +41,7 @@ fn primitive_equal(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 2);
-    EvalResult::done(Value::Boolean(args[0].is_equal(interp, &args[1])))
+    EvalResult::bool(args[0].is_equal(interp, &args[1]))
 }
 
 fn primitive_eq(_interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
@@ -88,7 +88,7 @@ fn primitive_procedure_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_procedure(args[0])))
+    EvalResult::bool(interp.is_procedure(args[0]))
 }
 
 fn primitive_closure_p(
@@ -97,7 +97,7 @@ fn primitive_closure_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_closure(args[0]).is_some()))
+    EvalResult::bool(interp.is_closure(args[0]).is_some())
 }
 
 fn primitive_closure_body(
@@ -133,7 +133,7 @@ fn primitive_symbol_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_symbol(args[0]).is_some()))
+    EvalResult::bool(interp.is_symbol(args[0]).is_some())
 }
 
 fn primitive_symbol_to_string(

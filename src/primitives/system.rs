@@ -40,7 +40,7 @@ fn primitive_debug(
         writeln!(port)?;
         port.flush()?;
     }
-    EvalResult::done(Value::Boolean(true))
+    EvalResult::bool(true)
 }
 
 fn primitive_load(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
