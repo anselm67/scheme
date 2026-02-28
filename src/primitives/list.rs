@@ -67,7 +67,7 @@ fn primitive_length(
             (_, cdr) = interp.to_pair(cdr)?;
         }
     }
-    EvalResult::done(Value::Number(Number::Int(length)))
+    EvalResult::int(length)
 }
 
 fn primitive_pair_p(
@@ -76,7 +76,7 @@ fn primitive_pair_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_pair(args[0]).is_some()))
+    EvalResult::bool(interp.is_pair(args[0]).is_some())
 }
 
 fn primitive_list_p(
@@ -85,9 +85,7 @@ fn primitive_list_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(
-        interp.is_nil(args[0]) || interp.is_list(args[0]),
-    ))
+    EvalResult::bool(interp.is_nil(args[0]) || interp.is_list(args[0]))
 }
 
 fn primitive_null_p(
@@ -96,7 +94,7 @@ fn primitive_null_p(
     args: &[Value],
 ) -> Result<EvalResult, SchemeError> {
     check_arity!(args, 1);
-    EvalResult::done(Value::Boolean(interp.is_null(args[0])))
+    EvalResult::bool(interp.is_null(args[0]))
 }
 
 fn primitive_cons(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
