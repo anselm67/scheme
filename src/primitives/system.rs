@@ -2,7 +2,7 @@ use std::process;
 
 use crate::{
     interp::Scheme,
-    types::{EvalResult, GcId, SchemeError, Value},
+    types::{EvalFuture, EvalResult, GcId, SchemeError, Value},
 };
 
 fn primitive_gc(interp: &Scheme, env: Value, _args: &[Value]) -> Result<EvalResult, SchemeError> {
@@ -43,14 +43,16 @@ fn primitive_debug(
     EvalResult::bool(true)
 }
 
-fn primitive_load(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
-    let mut retval = Value::Nil;
-    for arg in args {
-        let filename = interp.to_string(*arg)?;
-        let filename = filename.borrow();
-        retval = interp.load(filename.clone())?;
-    }
-    EvalResult::done(retval)
+fn primitive_load<'a>(interp: &'a Scheme, _env: Value, args: &'a [Value]) -> EvalFuture<'a> {
+    Box::pin(async move {
+        let mut retval = Value::Nil;
+        for arg in args {
+            let filename = interp.to_string(*arg)?;
+            let filename = filename.borrow();
+            retval = interp.load(filename.clone()).await?;
+        }
+        EvalResult::done(retval)
+    })
 }
 
 fn primitive_quit(
@@ -80,7 +82,7 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("gc", primitive_gc);
     interp.define_primitive("heap-stats", primitive_heap_stats);
     interp.define_primitive("debug", primitive_debug);
-    interp.define_primitive("load", primitive_load);
+    interp.define_async_primitive("load", primitive_load);
     interp.define_primitive("quit", primitive_quit);
     interp.define_primitive("exit", primitive_quit);
     interp.define_primitive("peek", primitive_peek);

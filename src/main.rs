@@ -6,25 +6,29 @@ use scheme::types::Value;
 
 use scheme::interp::{Scheme, SchemeOptions};
 
-fn eval_expr(interp: &Scheme, expr: Value) {
-    let expansion = interp.expand(expr);
-    expansion
-        .and_then(|expanded| {
+async fn eval_expr(interp: &Scheme, expr: Value) {
+    let expansion = interp.expand(expr).await;
+    match expansion {
+        Ok(expanded) => {
             if interp.debug_macro {
                 println!("expanded => {}", interp.display(expanded.value()));
             }
-            interp.eval(interp.env, expanded.value())
-        })
-        .map(|value| {
-            interp.flush_stdout();
-            println!(" = {}", interp.display(value))
-        })
-        .unwrap_or_else(|e| eprintln!("{}", e));
+            let result = interp.eval(interp.env, expanded.value()).await;
+            match result {
+                Ok(value) => {
+                    interp.flush_stdout();
+                    println!(" = {}", interp.display(value));
+                }
+                Err(e) => eprintln!("Evaluation failed: {e}"),
+            }
+        }
+        Err(e) => eprintln!("Expansion failed: {e}"),
+    }
 }
 
 const HISTORY_FILENAME: &str = ".scheme.history";
 
-fn repl(interp: &Scheme) {
+async fn repl(interp: &Scheme) {
     let mut rl = DefaultEditor::new().expect("Failed to init REPL.");
 
     if rl.load_history(HISTORY_FILENAME).is_err() {
@@ -39,7 +43,7 @@ fn repl(interp: &Scheme) {
                 let mut parser = Parser::from_string(&line);
                 let expr = parser.read(interp);
                 match expr {
-                    Ok(expr) => eval_expr(interp, expr.value()),
+                    Ok(expr) => eval_expr(interp, expr.value()).await,
                     Err(e) => eprintln!("Error: {:?}", e),
                 }
             }
@@ -87,26 +91,31 @@ struct Arg {
     exprs: Vec<String>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let arg = <Arg as clap::Parser>::parse();
-    let options = SchemeOptions::new()
-        .set_init_scheme(arg.init)
-        .set_debug_macro(arg.debug_macro)
-        .set_verbose_gc(arg.verbose_gc)
-        .set_heap_size(arg.heap_size);
-
-    let interp = Scheme::new(&options);
-    for file in &arg.files {
-        println!("Loading {}", file);
-        match interp.load(file) {
-            Err(e) => {
-                panic!("Failed to load {}: {}", file.to_string(), e);
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let options = SchemeOptions::new()
+                .set_init_scheme(arg.init)
+                .set_debug_macro(arg.debug_macro)
+                .set_verbose_gc(arg.verbose_gc)
+                .set_heap_size(arg.heap_size);
+            let interp = Scheme::new(&options).await;
+            for file in &arg.files {
+                println!("Loading {}", file);
+                match interp.load(file).await {
+                    Err(e) => {
+                        panic!("Failed to load {}: {}", file.to_string(), e);
+                    }
+                    _ => {}
+                }
             }
-            _ => {}
-        }
-    }
-    for expr in &arg.exprs {
-        let _ = interp.eval_string(expr);
-    }
-    repl(&interp);
+            for expr in &arg.exprs {
+                let _ = interp.eval_string(expr).await;
+            }
+            repl(&interp).await;
+        })
+        .await
 }

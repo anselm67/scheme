@@ -1,11 +1,13 @@
-use std::cell::{Ref, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::rc::Rc;
 
+use async_recursion::async_recursion;
+
 use crate::env::Env;
-use crate::heap::{self, Handle, Heap, PrimitiveFn};
+use crate::heap::{self, AsyncPrimitiveFn, Handle, Heap, PrimitiveFn};
 use crate::heap::{Apply, Closure, HeapObject, Keyword, OutputPort};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
@@ -104,7 +106,7 @@ impl SchemeOptions {
 }
 
 impl Scheme {
-    pub fn new(options: &SchemeOptions) -> Self {
+    pub async fn new(options: &SchemeOptions) -> Self {
         let heap_handle = RefCell::new(heap::Heap::new(options.heap_size));
         let global_env = crate::env::Env {
             macros: HashMap::new(),
@@ -169,7 +171,7 @@ impl Scheme {
 
             empty_string: empty_string,
         };
-        interp.init(options);
+        interp.init(options).await;
         interp
     }
 
@@ -197,10 +199,10 @@ impl Scheme {
         }
     }
 
-    fn init_scheme(&self) {
+    async fn init_scheme(&self) {
         let text = include_str!("scheme/macros.scm");
         let mut parser = Parser::from_string(text);
-        if let Err(e) = self.load_from_parser(&mut parser) {
+        if let Err(e) = self.load_from_parser(&mut parser).await {
             panic!("Init from scheme/macros.scm failed: {}", e);
         }
     }
@@ -273,6 +275,10 @@ impl Scheme {
         self.alloc_with_retry(|heap| heap.raw_alloc_primitive(name.clone(), func))
     }
 
+    pub fn alloc_async_primitive(&self, name: Rc<str>, func: AsyncPrimitiveFn) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_async_primitive(name.clone(), func))
+    }
+
     pub fn alloc_closure(&self, closure: Closure) -> Handle {
         self.alloc_with_retry(|heap| heap.raw_alloc_closure(closure.clone()))
     }
@@ -301,9 +307,10 @@ impl Scheme {
         self.alloc_with_retry(|heap| heap.raw_alloc_output_string_port())
     }
 
-    pub fn with_input_port<F, T>(&self, value: Value, thunk: F) -> Result<T, SchemeError>
+    pub async fn with_input_port<F, Fut, T>(&self, value: Value, thunk: F) -> Result<T, SchemeError>
     where
-        F: FnOnce() -> Result<T, SchemeError>,
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, SchemeError>>,
     {
         let input = self.to_input_port(value)?;
         if input.borrow().is_none() {
@@ -315,13 +322,18 @@ impl Scheme {
             let _guard = PortGuard {
                 stack: &self.input_stack,
             };
-            thunk()
+            thunk().await
         }
     }
 
-    pub fn with_output_port<F, T>(&self, value: Value, thunk: F) -> Result<T, SchemeError>
+    pub async fn with_output_port<F, Fut, T>(
+        &self,
+        value: Value,
+        thunk: F,
+    ) -> Result<T, SchemeError>
     where
-        F: FnOnce() -> Result<T, SchemeError>,
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, SchemeError>>,
     {
         let output = self.to_output_port(value)?;
         if output.port.borrow().is_none() {
@@ -333,7 +345,7 @@ impl Scheme {
             let _guard = PortGuard {
                 stack: &self.input_stack,
             };
-            thunk()
+            thunk().await
         }
     }
 
@@ -392,20 +404,27 @@ impl Scheme {
         self.define(handle.value(), value);
     }
 
-    pub fn define_primitive(&self, name: &str, func: heap::PrimitiveFn) {
+    pub fn define_primitive(&self, name: &str, func: PrimitiveFn) {
         let (name, handle) = self.intern_symbol(name);
         let prim = self.alloc_primitive(name.clone(), func);
         self.define(handle.value(), prim.value());
     }
 
-    fn init(&self, options: &SchemeOptions) {
+    pub fn define_async_primitive(&self, name: &str, func: AsyncPrimitiveFn) {
+        let (name, handle) = self.intern_symbol(name);
+        let prim = self.alloc_async_primitive(name.clone(), func);
+        self.define(handle.value(), prim.value());
+    }
+
+    async fn init(&self, options: &SchemeOptions) {
         self.init_io();
         crate::primitives::register_all(self);
         if options.init_scheme {
-            self.init_scheme();
+            self.init_scheme().await;
         }
     }
 
+    // TODO This might not be needed in the end.
     pub fn fold_list<T, F>(&self, list: Value, init: T, mut func: F) -> Result<T, SchemeError>
     where
         F: FnMut(T, Value) -> Result<T, SchemeError>,
@@ -414,6 +433,25 @@ impl Scheme {
         let mut acc = init;
         while let Some((car, cdr)) = self.is_pair(p) {
             acc = func(acc, car)?;
+            p = cdr;
+        }
+        Ok(acc)
+    }
+
+    pub async fn async_fold_list<T, F, Fut>(
+        &self,
+        list: Value,
+        init: T,
+        mut func: F,
+    ) -> Result<T, SchemeError>
+    where
+        F: FnMut(T, Value) -> Fut,
+        Fut: Future<Output = Result<T, SchemeError>>,
+    {
+        let mut p = list;
+        let mut acc = init;
+        while let Some((car, cdr)) = self.is_pair(p) {
+            acc = func(acc, car).await?;
             p = cdr;
         }
         Ok(acc)
@@ -435,12 +473,14 @@ impl Scheme {
         self.intern_symbol(name).1
     }
 
-    pub fn eval(&self, env: Value, expr: Value) -> Result<Value, SchemeError> {
+    pub async fn eval(&self, env: Value, expr: Value) -> Result<Value, SchemeError> {
         let mut current_expr = self.handle(expr);
         let mut current_env = self.handle(env);
 
         loop {
-            match current_expr.value().eval(self, current_env.value())? {
+            let result = current_expr.value().eval(self, current_env.value()).await?;
+
+            match result {
                 EvalResult::Done(value) => {
                     return Ok(value);
                 }
@@ -452,10 +492,15 @@ impl Scheme {
         }
     }
 
-    pub fn apply(&self, env: Value, f: Value, args: Vec<Value>) -> Result<Value, SchemeError> {
-        match f.apply(self, env, args)? {
+    pub async fn apply(
+        &self,
+        env: Value,
+        f: Value,
+        args: Vec<Value>,
+    ) -> Result<Value, SchemeError> {
+        match f.apply(self, env, args).await? {
             EvalResult::Done(value) => return Ok(value),
-            EvalResult::Continuation(next_env, next_expr) => self.eval(next_env, next_expr),
+            EvalResult::Continuation(next_env, next_expr) => self.eval(next_env, next_expr).await,
         }
     }
 
@@ -976,15 +1021,15 @@ impl Scheme {
         }
     }
 
-    fn expand_macro(&self, func: Value, args: Value) -> Result<Handle, SchemeError> {
+    async fn expand_macro(&self, func: Value, args: Value) -> Result<Handle, SchemeError> {
         let args = self.fold_list(args, Vec::new(), |mut acc, arg| {
             acc.push(arg);
             Ok(acc)
         })?;
-        let expansion = match func.apply(self, self.env, args)? {
+        let expansion = match func.apply(self, self.env, args).await? {
             EvalResult::Done(value) => self.handle(value),
             EvalResult::Continuation(next_env, next_expr) => {
-                self.handle(self.eval(next_env, next_expr)?)
+                self.handle(self.eval(next_env, next_expr).await?)
             }
         };
         Ok(expansion)
@@ -996,7 +1041,8 @@ impl Scheme {
         env.borrow().macros.get(&id).cloned()
     }
 
-    pub fn expand(&self, expr: Value) -> Result<Handle, SchemeError> {
+    #[async_recursion(?Send)]
+    pub async fn expand(&self, expr: Value) -> Result<Handle, SchemeError> {
         if let Some((car, cdr)) = self.is_pair(expr) {
             if car == self.quote {
                 // We never expand quoted expressions!
@@ -1009,20 +1055,27 @@ impl Scheme {
                 if self.debug_macro {
                     println!("expand macro {}", self.display(cdr));
                 }
-                let expansion = self.expand_macro(func, cdr)?;
+                let expansion = self.expand_macro(func, cdr).await?;
                 if self.debug_macro {
                     println!("expansion {}", self.display(expansion.value()));
                 }
-                Ok(self.expand(expansion.value())?)
+                Ok(self.expand(expansion.value()).await?)
             } else {
-                let mut updated = false;
-                let items = self.fold_list(expr, vec![], |mut acc, item| {
-                    let expansion = self.expand(item)?;
-                    updated = updated || expansion.value() != item;
-                    acc.push(expansion);
-                    Ok(acc)
-                });
-                if updated {
+                let updated = Cell::new(false);
+                let items = self
+                    .async_fold_list(expr, vec![], |mut acc, item| {
+                        let updated = &updated;
+                        async move {
+                            let expansion = self.expand(item).await?;
+                            if expansion.value() != item {
+                                updated.set(true);
+                            }
+                            acc.push(expansion);
+                            Ok(acc)
+                        }
+                    })
+                    .await;
+                if updated.get() {
                     let expansion = self.alloc_list_from_handles(&items?);
                     Ok(expansion)
                 } else {
@@ -1034,23 +1087,23 @@ impl Scheme {
         }
     }
 
-    fn load_from_parser(&self, parser: &mut Parser) -> Result<Value, SchemeError> {
+    async fn load_from_parser<'a>(&self, parser: &mut Parser<'a>) -> Result<Value, SchemeError> {
         let mut retval = Value::Eof;
         loop {
             let handle = parser.read(self)?;
             match handle.value() {
                 Value::Eof => return Ok(retval),
                 value => {
-                    let expansion = self.expand(value)?;
-                    retval = self.eval(self.env, expansion.value())?;
+                    let expansion = self.expand(value).await?;
+                    retval = self.eval(self.env, expansion.value()).await?;
                 }
             }
         }
     }
 
-    pub fn load<P: AsRef<Path>>(&self, path: P) -> Result<Value, SchemeError> {
+    pub async fn load<P: AsRef<Path>>(&self, path: P) -> Result<Value, SchemeError> {
         let mut parser = Parser::from_file(path)?;
-        match self.load_from_parser(&mut parser) {
+        match self.load_from_parser(&mut parser).await {
             Err(error) => {
                 let location = parser.last_location().clone();
                 Err(SchemeError::At(location, Box::new(error)))
@@ -1086,10 +1139,14 @@ impl Scheme {
         }
     }
 
-    pub fn eval_string(&self, expr: &str) -> Result<Value, SchemeError> {
+    pub async fn eval_string(&self, expr: &str) -> Result<Value, SchemeError> {
         let mut parser = Parser::from_string(expr);
         let expr = parser.read(self)?;
-        self.expand(expr.value())
-            .and_then(|expanded| self.eval(self.env, expanded.value()))
+        let expanded = self.expand(expr.value()).await?;
+        self.eval(self.env, expanded.value()).await
+    }
+
+    pub async fn blocking_eval_string(&self, expr: &str) -> Result<Value, SchemeError> {
+        tokio::runtime::Handle::current().block_on(async { self.eval_string(expr).await })
     }
 }

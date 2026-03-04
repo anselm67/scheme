@@ -3,9 +3,9 @@ use crate::{
     parser::Parser,
 };
 
-#[test]
-fn test_parse_some_exprs() {
-    let interp = Scheme::new(&SchemeOptions::new());
+#[tokio::test]
+async fn test_parse_some_exprs() {
+    let interp = Scheme::new(&SchemeOptions::new()).await;
 
     let inputs = vec![
         "(* 2 3)",
@@ -20,9 +20,9 @@ fn test_parse_some_exprs() {
     }
 }
 
-#[test]
-fn test_parse_fails() {
-    let interp = Scheme::new(&SchemeOptions::new());
+#[tokio::test]
+async fn test_parse_fails() {
+    let interp = Scheme::new(&SchemeOptions::new()).await;
 
     let inputs = vec!["(* 2 3", "(define! x \\#a)"];
     for text in inputs {

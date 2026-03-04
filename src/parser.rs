@@ -420,9 +420,9 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_parse_number() {
-        let interp = Scheme::new(&SchemeOptions::new());
+    #[tokio::test]
+    async fn test_parse_number() {
+        let interp = Scheme::new(&SchemeOptions::new()).await;
         let inputs = vec!["42", "-3", "0", "3.14", "-0.001", "2e10", "-1.5E-3"];
         let expected = vec![
             Value::Number(Number::Int(42)),
@@ -440,8 +440,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_hash() {
+    #[tokio::test]
+    async fn test_parse_hash() {
         let ok_inputs = vec![
             ("#t", Value::Boolean(true)),
             ("#f", Value::Boolean(false)),
@@ -458,7 +458,7 @@ mod tests {
             ("#\\space", Value::Char(32)),
             ("#\\A", Value::Char(65)),
         ];
-        let interp = Scheme::new(&SchemeOptions::new());
+        let interp = Scheme::new(&SchemeOptions::new()).await;
         for (text, value) in ok_inputs {
             let mut parser = Parser::from_string(text);
             assert_eq!(
@@ -468,9 +468,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_symbol() {
-        let interp = Scheme::new(&SchemeOptions::new());
+    #[tokio::test]
+    async fn test_parse_symbol() {
+        let interp = Scheme::new(&SchemeOptions::new()).await;
         let inputs = vec!["some-symbol"];
         for text in inputs {
             let mut parser = Parser::from_string(text);
@@ -482,9 +482,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_string() {
-        let interp = Scheme::new(&SchemeOptions::new());
+    #[tokio::test]
+    async fn test_parse_string() {
+        let interp = Scheme::new(&SchemeOptions::new()).await;
         let inputs = vec!["\"Hello World\""];
         for text in inputs {
             let mut parser = Parser::from_string(text);
@@ -496,9 +496,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_list() {
-        let interp = Scheme::new(&SchemeOptions::new());
+    #[tokio::test]
+    async fn test_parse_list() {
+        let interp = Scheme::new(&SchemeOptions::new()).await;
         let inputs = vec!["1 . 2)", ")", "1 2 3)"];
         for text in inputs {
             let mut parser = Parser::from_string(text);

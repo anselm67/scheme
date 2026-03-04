@@ -1,38 +1,40 @@
 use crate::{
     interp::Scheme,
-    types::{EvalResult, Number, SchemeError, Value},
+    types::{EvalFuture, EvalResult, Number, SchemeError, Value},
 };
 
-fn primitive_eval(interp: &Scheme, env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    EvalResult::done(interp.eval(env, args[0])?)
+fn primitive_eval<'a>(interp: &'a Scheme, env: Value, args: &'a [Value]) -> EvalFuture<'a> {
+    Box::pin(async move {
+        check_arity!(args, 1);
+        EvalResult::done(interp.eval(env, args[0]).await?)
+    })
 }
 
-fn primitive_apply(interp: &Scheme, env: Value, args: &[Value]) -> Result<EvalResult, SchemeError> {
+fn primitive_apply<'a>(interp: &'a Scheme, env: Value, args: &'a [Value]) -> EvalFuture<'a> {
     use crate::heap::Apply;
-    check_min_arity!(args, 2);
-    let func = args[0];
-    let (last, firsts) = args[1..]
-        .split_last()
-        .ok_or(SchemeError::ArgCountError(format!(
-            "Expected at least 2 args, got {}",
-            args.len()
-        )))?;
-    let all_args = interp.fold_list(*last, firsts.to_vec(), |mut acc, arg| {
-        acc.push(arg);
-        Ok(acc)
-    })?;
-    func.apply(interp, env, all_args)
+    Box::pin(async move {
+        check_min_arity!(args, 2);
+        let func = args[0];
+        let (last, firsts) = args[1..]
+            .split_last()
+            .ok_or(SchemeError::ArgCountError(format!(
+                "Expected at least 2 args, got {}",
+                args.len()
+            )))?;
+        let all_args = interp.fold_list(*last, firsts.to_vec(), |mut acc, arg| {
+            acc.push(arg);
+            Ok(acc)
+        })?;
+        func.apply(interp, env, all_args).await
+    })
 }
 
-fn primitive_expand(
-    interp: &Scheme,
-    _env: Value,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    let expansion = interp.expand(args[0])?;
-    EvalResult::done(expansion.value())
+fn primitive_expand<'a>(interp: &'a Scheme, _env: Value, args: &'a [Value]) -> EvalFuture<'a> {
+    Box::pin(async move {
+        check_arity!(args, 1);
+        let expansion = interp.expand(args[0]).await?;
+        EvalResult::done(expansion.value())
+    })
 }
 
 fn primitive_equal(
@@ -64,22 +66,24 @@ fn primitive_error(
     Err(SchemeError::UserError(string.borrow().clone()))
 }
 
-fn primitive_with_exception_handler(
-    interp: &Scheme,
+fn primitive_with_exception_handler<'a>(
+    interp: &'a Scheme,
     env: Value,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 2);
-    let handler = args[0];
-    let thunk = args[1];
-    match interp.apply(env, thunk, vec![]) {
-        Ok(value) => EvalResult::done(value),
-        Err(e) => {
-            let (label, message) = e.get_infos();
-            let string = interp.alloc_string(format!("[{}]: {}", label, message));
-            EvalResult::done(interp.apply(env, handler, vec![string.value()])?)
+    args: &'a [Value],
+) -> EvalFuture<'a> {
+    Box::pin(async move {
+        check_arity!(args, 2);
+        let handler = args[0];
+        let thunk = args[1];
+        match interp.apply(env, thunk, vec![]).await {
+            Ok(value) => EvalResult::done(value),
+            Err(e) => {
+                let (label, message) = e.get_infos();
+                let string = interp.alloc_string(format!("[{}]: {}", label, message));
+                EvalResult::done(interp.apply(env, handler, vec![string.value()]).await?)
+            }
         }
-    }
+    })
 }
 
 fn primitive_procedure_p(
@@ -162,13 +166,13 @@ fn primitive_string_to_symbol(
 pub fn register(interp: &Scheme) {
     interp.define_from_string("#t", Value::Boolean(true));
     interp.define_from_string("#f", Value::Boolean(false));
-    interp.define_primitive("eval", primitive_eval);
-    interp.define_primitive("apply", primitive_apply);
-    interp.define_primitive("expand", primitive_expand);
+    interp.define_async_primitive("eval", primitive_eval);
+    interp.define_async_primitive("apply", primitive_apply);
+    interp.define_async_primitive("expand", primitive_expand);
     interp.define_primitive("eq?", primitive_eq);
     interp.define_primitive("equal?", primitive_equal);
     interp.define_primitive("error", primitive_error);
-    interp.define_primitive("with-exception-handler", primitive_with_exception_handler);
+    interp.define_async_primitive("with-exception-handler", primitive_with_exception_handler);
     interp.define_primitive("procedure?", primitive_procedure_p);
     interp.define_primitive("closure?", primitive_closure_p);
     interp.define_primitive("closure->body", primitive_closure_body);

@@ -11,13 +11,18 @@ use crate::{
     env::Env,
     interp::Scheme,
     markset::MarkSet,
-    types::{EvalResult, GcId, Number, SchemeError, SchemeObject, Value},
+    types::{EvalFuture, EvalResult, GcId, Number, SchemeError, SchemeObject, Value},
 };
 
 pub type PrimitiveFn = fn(&Scheme, env: Value, &[Value]) -> Result<EvalResult, SchemeError>;
+pub type AsyncPrimitiveFn = for<'a> fn(&'a Scheme, Value, &'a [Value]) -> EvalFuture<'a>;
 
+enum PrimitiveKind {
+    Sync(PrimitiveFn),
+    Async(AsyncPrimitiveFn),
+}
 pub struct Primitive {
-    func: PrimitiveFn,
+    kind: PrimitiveKind,
     name: Rc<str>,
 }
 #[derive(Clone)]
@@ -164,99 +169,101 @@ impl Keyword {
         }
     }
 
-    fn eval(
-        interp: &Scheme,
+    fn eval<'a>(
+        interp: &'a Scheme,
         env: Value,
         keyword: Keyword,
-        args: &[Value],
-    ) -> Result<EvalResult, SchemeError> {
-        match keyword {
-            Keyword::If => {
-                check_arity_range!(args, 2, 3);
-                let condition = interp.eval(env, args[0])?;
-                match condition {
-                    Value::Boolean(false) => {
-                        if args.len() > 2 {
-                            Ok(EvalResult::Continuation(env, args[2]))
+        args: &'a [Value],
+    ) -> EvalFuture<'a> {
+        Box::pin(async move {
+            match keyword {
+                Keyword::If => {
+                    check_arity_range!(args, 2, 3);
+                    let condition = interp.eval(env, args[0]).await?;
+                    match condition {
+                        Value::Boolean(false) => {
+                            if args.len() > 2 {
+                                Ok(EvalResult::Continuation(env, args[2]))
+                            } else {
+                                EvalResult::done(Value::Unbound)
+                            }
+                        }
+                        _ => Ok(EvalResult::Continuation(env, args[1])),
+                    }
+                }
+                Keyword::DefineBang => {
+                    check_arity!(args, 2);
+                    let symbol = interp.to_object(args[0])?;
+                    let value = interp.eval(env, args[1]).await?;
+                    let env = interp.to_env(env);
+                    env.borrow_mut().define(symbol, value);
+                    Ok(EvalResult::Done(Value::Nil))
+                }
+                Keyword::DefineSyntax => {
+                    check_arity!(args, 2);
+                    let symbol = interp.to_symbol(args[0])?;
+                    let value = interp.eval(env, args[1]).await?;
+                    let env = interp.to_env(env);
+                    env.borrow_mut().define_syntax(symbol, value);
+                    Ok(EvalResult::Done(Value::Nil))
+                }
+                Keyword::Lambda => match args {
+                    [params_value, body @ .., tail] => {
+                        let (params, is_nary) = extract_param_ids(interp, *params_value)?;
+                        if is_nary {
+                            Ok(EvalResult::Done(
+                                interp
+                                    .alloc_nary_closure(Closure {
+                                        params: params.into_boxed_slice(),
+                                        body: body.to_vec().into_boxed_slice(),
+                                        tail: *tail,
+                                        env: env,
+                                    })
+                                    .value(),
+                            ))
                         } else {
-                            EvalResult::done(Value::Unbound)
+                            Ok(EvalResult::Done(
+                                interp
+                                    .alloc_closure(Closure {
+                                        params: params.into_boxed_slice(),
+                                        body: body.to_vec().into_boxed_slice(),
+                                        tail: *tail,
+                                        env: env,
+                                    })
+                                    .value(),
+                            ))
                         }
                     }
-                    _ => Ok(EvalResult::Continuation(env, args[1])),
+                    _ => Err(SchemeError::EvalError(format!(
+                        "lambda expects at least 2 arguments, got {}",
+                        args.len()
+                    ))),
+                },
+                Keyword::Quote => {
+                    check_arity!(args, 1);
+                    Ok(EvalResult::Done(args[0]))
                 }
-            }
-            Keyword::DefineBang => {
-                check_arity!(args, 2);
-                let symbol = interp.to_object(args[0])?;
-                let value = interp.eval(env, args[1])?;
-                let env = interp.to_env(env);
-                env.borrow_mut().define(symbol, value);
-                Ok(EvalResult::Done(Value::Nil))
-            }
-            Keyword::DefineSyntax => {
-                check_arity!(args, 2);
-                let symbol = interp.to_symbol(args[0])?;
-                let value = interp.eval(env, args[1])?;
-                let env = interp.to_env(env);
-                env.borrow_mut().define_syntax(symbol, value);
-                Ok(EvalResult::Done(Value::Nil))
-            }
-            Keyword::Lambda => match args {
-                [params_value, body @ .., tail] => {
-                    let (params, is_nary) = extract_param_ids(interp, *params_value)?;
-                    if is_nary {
-                        Ok(EvalResult::Done(
-                            interp
-                                .alloc_nary_closure(Closure {
-                                    params: params.into_boxed_slice(),
-                                    body: body.to_vec().into_boxed_slice(),
-                                    tail: *tail,
-                                    env: env,
-                                })
-                                .value(),
-                        ))
+                Keyword::QuasiQuote => Err(SchemeError::ImplementationError(format!(
+                    "Keyword::QuasiQuote should never be evaluated, missing a call to expand()?"
+                ))),
+                Keyword::SetBang => {
+                    check_arity!(args, 2);
+                    let var = args[0];
+                    let value = interp.eval(env, args[1]).await?;
+                    if let Value::Object(var_id) = var {
+                        Env::set_bang(interp, env, var_id, value)?;
+                        Ok(EvalResult::Done(value))
                     } else {
-                        Ok(EvalResult::Done(
-                            interp
-                                .alloc_closure(Closure {
-                                    params: params.into_boxed_slice(),
-                                    body: body.to_vec().into_boxed_slice(),
-                                    tail: *tail,
-                                    env: env,
-                                })
-                                .value(),
+                        Err(SchemeError::TypeError(
+                            "set! first argument must be a variable".to_string(),
                         ))
                     }
                 }
-                _ => Err(SchemeError::EvalError(format!(
-                    "lambda expects at least 2 arguments, got {}",
-                    args.len()
-                ))),
-            },
-            Keyword::Quote => {
-                check_arity!(args, 1);
-                Ok(EvalResult::Done(args[0]))
-            }
-            Keyword::QuasiQuote => Err(SchemeError::ImplementationError(format!(
-                "Keyword::QuasiQuote should never be evaluated, missing a call to expand()?"
-            ))),
-            Keyword::SetBang => {
-                check_arity!(args, 2);
-                let var = args[0];
-                let value = interp.eval(env, args[1])?;
-                if let Value::Object(var_id) = var {
-                    Env::set_bang(interp, env, var_id, value)?;
-                    Ok(EvalResult::Done(value))
-                } else {
-                    Err(SchemeError::TypeError(
-                        "set! first argument must be a variable".to_string(),
-                    ))
+                _ => {
+                    return Err(SchemeError::EvalError("not implemented".to_string()));
                 }
             }
-            _ => {
-                return Err(SchemeError::EvalError("not implemented".to_string()));
-            }
-        }
+        })
     }
 }
 
@@ -571,8 +578,21 @@ impl Heap {
     ) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
         self.objects[id] = HeapObject::Primitive(Rc::new(Primitive {
+            kind: PrimitiveKind::Sync(func),
             name: name.clone(),
-            func,
+        }));
+        Ok(self.handle_id(id))
+    }
+
+    pub fn raw_alloc_async_primitive(
+        &mut self,
+        name: Rc<str>,
+        func: AsyncPrimitiveFn,
+    ) -> Result<Handle, SchemeError> {
+        let id: GcId = self.next_id()?;
+        self.objects[id] = HeapObject::Primitive(Rc::new(Primitive {
+            kind: PrimitiveKind::Async(func),
+            name: name.clone(),
         }));
         Ok(self.handle_id(id))
     }
@@ -666,136 +686,138 @@ impl Heap {
         count
     }
 }
+
 pub trait Apply {
-    fn apply(
-        &self,
-        interp: &Scheme,
-        env: Value,
-        args: Vec<Value>,
-    ) -> Result<EvalResult, SchemeError>;
+    fn apply<'a>(&'a self, interp: &'a Scheme, env: Value, args: Vec<Value>) -> EvalFuture<'a>;
 }
 
 impl Apply for Value {
-    fn apply(
-        &self,
-        interp: &Scheme,
-        env: Value,
-        args: Vec<Value>,
-    ) -> Result<EvalResult, SchemeError> {
-        let obj = {
-            let heap = interp.heap.borrow();
-            match self {
-                Value::Object(id) => heap.get(*id).clone(),
-                _ => {
-                    return Err(SchemeError::TypeError(format!(
-                        "Attempted to apply a non-object value with type {}",
-                        self.type_name()
-                    )));
+    fn apply<'a>(&'a self, interp: &'a Scheme, env: Value, args: Vec<Value>) -> EvalFuture<'a> {
+        Box::pin(async move {
+            let obj = {
+                let heap = interp.heap.borrow();
+                match self {
+                    Value::Object(id) => heap.get(*id).clone(),
+                    _ => {
+                        return Err(SchemeError::TypeError(format!(
+                            "Attempted to apply a non-object value with type {}",
+                            self.type_name()
+                        )));
+                    }
                 }
-            }
-        };
+            };
 
-        match obj {
-            HeapObject::Pair(car, _) => {
-                let func = interp.eval(env, car)?;
-                func.apply(interp, env, args)
-            }
-            HeapObject::Closure(closure) => {
-                check_arity!(args, closure.params.len());
-                let new_env = Env::extend(closure.env);
-                for (param_id, arg_value) in closure.params.iter().zip(args.iter()) {
-                    new_env.borrow_mut().define(*param_id, *arg_value);
+            match obj {
+                HeapObject::Pair(car, _) => {
+                    let func = interp.eval(env, car).await?;
+                    let value = func.apply(interp, env, args).await?;
+                    Ok(value)
                 }
-                let env_handle = interp.alloc_env(new_env);
-                for expr in &closure.body {
-                    interp.eval(env_handle.value(), *expr)?;
+                HeapObject::Closure(closure) => {
+                    check_arity!(args, closure.params.len());
+                    let new_env = Env::extend(closure.env);
+                    for (param_id, arg_value) in closure.params.iter().zip(args.iter()) {
+                        new_env.borrow_mut().define(*param_id, *arg_value);
+                    }
+                    let env_handle = interp.alloc_env(new_env);
+                    for expr in &closure.body {
+                        interp.eval(env_handle.value(), *expr).await?;
+                    }
+                    Ok(EvalResult::Continuation(env_handle.value(), closure.tail))
                 }
-                Ok(EvalResult::Continuation(env_handle.value(), closure.tail))
-            }
-            HeapObject::NaryClosure(closure) => {
-                let new_env = Env::extend(closure.env);
-                let mut index = 0;
-                if args.len() < closure.params.len() - 1 {
-                    return Err(SchemeError::ArgCountError(format!(
-                        "Expected at least {} args, but got {}.",
-                        closure.params.len() - 1,
-                        args.len()
-                    )));
-                }
-                while index < closure.params.len() - 1 {
+                HeapObject::NaryClosure(closure) => {
+                    let new_env = Env::extend(closure.env);
+                    let mut index = 0;
+                    if args.len() < closure.params.len() - 1 {
+                        return Err(SchemeError::ArgCountError(format!(
+                            "Expected at least {} args, but got {}.",
+                            closure.params.len() - 1,
+                            args.len()
+                        )));
+                    }
+                    while index < closure.params.len() - 1 {
+                        new_env
+                            .borrow_mut()
+                            .define(closure.params[index], args[index]);
+                        index += 1;
+                    }
+                    let rest = interp.alloc_list(&args[index..]);
                     new_env
                         .borrow_mut()
-                        .define(closure.params[index], args[index]);
-                    index += 1;
+                        .define(closure.params[index], rest.value());
+                    let env_handle = interp.alloc_env(new_env);
+                    for expr in &closure.body {
+                        interp.eval(env_handle.value(), *expr).await?;
+                    }
+                    Ok(EvalResult::Continuation(env_handle.value(), closure.tail))
                 }
-                let rest = interp.alloc_list(&args[index..]);
-                new_env
-                    .borrow_mut()
-                    .define(closure.params[index], rest.value());
-                let env_handle = interp.alloc_env(new_env);
-                for expr in &closure.body {
-                    interp.eval(env_handle.value(), *expr)?;
+                HeapObject::Primitive(pr) => match pr.kind {
+                    PrimitiveKind::Sync(func) => Ok(func(interp, env, &args)?),
+                    PrimitiveKind::Async(func) => func(interp, env, &args).await,
+                },
+                HeapObject::FreeSlot(_) => {
+                    panic!("Attempt to apply a FreeSlot!");
                 }
-                Ok(EvalResult::Continuation(env_handle.value(), closure.tail))
+                any => Err(SchemeError::TypeError(format!(
+                    "Attempted to apply a non-primitive object with type {}",
+                    any.type_name()
+                ))),
             }
-            HeapObject::Primitive(pr) => Ok((pr.func)(interp, env, &args)?),
-            HeapObject::FreeSlot(_) => {
-                panic!("Attempt to apply a FreeSlot!");
-            }
-            any => Err(SchemeError::TypeError(format!(
-                "Attempted to apply a non-primitive object with type {}",
-                any.type_name()
-            ))),
-        }
+        })
     }
 }
 
 impl SchemeObject for GcId {
-    fn eval(&self, interp: &Scheme, env: Value) -> Result<EvalResult, SchemeError> {
-        let id = *self;
-        let obj = {
-            let heap = interp.heap.borrow();
-            heap.get(id).clone()
-        };
+    fn eval<'a>(&'a self, interp: &'a Scheme, env: Value) -> EvalFuture<'a> {
+        Box::pin(async move {
+            let id = *self;
+            let obj = {
+                let heap = interp.heap.borrow();
+                heap.get(id).clone()
+            };
 
-        match obj {
-            HeapObject::Pair(car, cdr) => {
-                if let Value::Object(func_id) = car
-                    && let Some(keyword) = Keyword::from_id(func_id)
-                {
-                    // Special form handling - no args eval.
-                    let arg_handles = interp.fold_list(cdr, Vec::new(), |mut acc, arg| {
-                        acc.push(interp.handle(arg));
-                        Ok(acc)
-                    })?;
-                    let args: Vec<Value> = arg_handles.iter().map(|h| h.value()).collect();
-                    Keyword::eval(interp, env, keyword, &args)
-                } else {
-                    // Regular function call with arg eval.
-                    let arg_handles = interp.fold_list(cdr, Vec::new(), |mut acc, arg| {
-                        let value = interp.eval(env, arg)?;
-                        acc.push(interp.handle(value));
-                        Ok(acc)
-                    })?;
-                    let func = interp.eval(env, car)?;
-                    func.apply(interp, env, arg_handles.iter().map(|h| h.value()).collect())
-                }
-            }
-            HeapObject::Symbol(name) => {
-                let env = interp.to_env(env);
-                match env.borrow().lookup(interp, id) {
-                    Some(value) => return Ok(EvalResult::Done(value)),
-                    None => {
-                        return Err(SchemeError::UnboundVariable(format!(
-                            "Unbound symbol: {}",
-                            name
-                        )));
+            match obj {
+                HeapObject::Pair(car, cdr) => {
+                    if let Value::Object(func_id) = car
+                        && let Some(keyword) = Keyword::from_id(func_id)
+                    {
+                        // Special form handling - no args eval.
+                        let arg_handles = interp.fold_list(cdr, Vec::new(), |mut acc, arg| {
+                            acc.push(interp.handle(arg));
+                            Ok(acc)
+                        })?;
+                        let args: Vec<Value> = arg_handles.iter().map(|h| h.value()).collect();
+                        Keyword::eval(interp, env, keyword, &args).await
+                    } else {
+                        // Regular function call with arg eval.
+                        let arg_handles = interp
+                            .async_fold_list(cdr, Vec::new(), |mut acc, arg| async move {
+                                let value = interp.eval(env, arg).await?;
+                                acc.push(interp.handle(value));
+                                Ok(acc)
+                            })
+                            .await?;
+                        let func = interp.eval(env, car).await?;
+                        func.apply(interp, env, arg_handles.iter().map(|h| h.value()).collect())
+                            .await
                     }
                 }
+                HeapObject::Symbol(name) => {
+                    let env = interp.to_env(env);
+                    match env.borrow().lookup(interp, id) {
+                        Some(value) => return Ok(EvalResult::Done(value)),
+                        None => {
+                            return Err(SchemeError::UnboundVariable(format!(
+                                "Unbound symbol: {}",
+                                name
+                            )));
+                        }
+                    }
+                }
+                HeapObject::FreeSlot(_) => panic!("Request to evaluate FreeSlot at {}", id),
+                _ => return Ok(EvalResult::Done(Value::Object(id))),
             }
-            HeapObject::FreeSlot(_) => panic!("Request to evaluate FreeSlot at {}", id),
-            _ => Ok(EvalResult::Done(Value::Object(id))),
-        }
+        })
     }
 
     fn is_false(&self) -> bool {

@@ -21,13 +21,13 @@ fn get_test_files() -> Vec<PathBuf> {
         .collect()
 }
 
-#[test]
-fn run_scheme_tests() {
-    let interp = Scheme::new(&SchemeOptions::new());
+#[tokio::test]
+async fn run_scheme_tests() {
+    let interp = Scheme::new(&SchemeOptions::new()).await;
     let test_files = get_test_files();
 
     for file in test_files {
-        if let Err(e) = interp.load(&file) {
+        if let Err(e) = interp.load(&file).await {
             panic!("Failed to run tests from {:?}: {:?}", &file, e)
         }
     }

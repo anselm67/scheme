@@ -8,7 +8,7 @@ use std::{
 use crate::{
     interp::Scheme,
     parser::Parser,
-    types::{EvalResult, SchemeError, Value},
+    types::{EvalFuture, EvalResult, SchemeError, Value},
 };
 
 fn primitive_input_port_p(
@@ -233,25 +233,33 @@ fn primitive_flush_output_port(
     }
 }
 
-fn primitive_with_input_port(
-    interp: &Scheme,
+fn primitive_with_input_port<'a>(
+    interp: &'a Scheme,
     env: Value,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 2);
-    interp.with_input_port(args[0], || {
-        EvalResult::done(interp.apply(env, args[1], vec![])?)
+    args: &'a [Value],
+) -> EvalFuture<'a> {
+    Box::pin(async move {
+        check_arity!(args, 2);
+        interp
+            .with_input_port(args[0], || async {
+                EvalResult::done(interp.apply(env, args[1], vec![]).await?)
+            })
+            .await
     })
 }
 
-fn primitive_with_output_port(
-    interp: &Scheme,
+fn primitive_with_output_port<'a>(
+    interp: &'a Scheme,
     env: Value,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 2);
-    interp.with_output_port(args[0], || {
-        EvalResult::done(interp.apply(env, args[1], vec![])?)
+    args: &'a [Value],
+) -> EvalFuture<'a> {
+    Box::pin(async move {
+        check_arity!(args, 2);
+        interp
+            .with_output_port(args[0], || async {
+                EvalResult::done(interp.apply(env, args[1], vec![]).await?)
+            })
+            .await
     })
 }
 
@@ -366,8 +374,8 @@ pub fn register(interp: &Scheme) {
     interp.define_primitive("eof-object?", primitive_eof_object);
     interp.define_primitive("write-char", primitive_write_char);
     interp.define_primitive("flush-output-port", primitive_flush_output_port);
-    interp.define_primitive("with-output-port", primitive_with_output_port);
-    interp.define_primitive("with-input-port", primitive_with_input_port);
+    interp.define_async_primitive("with-output-port", primitive_with_output_port);
+    interp.define_async_primitive("with-input-port", primitive_with_input_port);
     interp.define_primitive("current-output-port", primitive_current_output_port);
     interp.define_primitive("current-input-port", primitive_current_input_port);
     interp.define_primitive("write", primitive_write);

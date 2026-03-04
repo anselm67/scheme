@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, convert::TryFrom, fmt};
+use std::{cmp::Ordering, convert::TryFrom, fmt, pin::Pin};
 
 use crate::{interp::Scheme, markset::MarkSet};
 
@@ -102,8 +102,11 @@ impl EvalResult {
         EvalResult::done(Value::bool(value))
     }
 }
+
+pub type EvalFuture<'a> = Pin<Box<dyn Future<Output = Result<EvalResult, SchemeError>> + 'a>>;
+
 pub trait SchemeObject {
-    fn eval(&self, interp: &Scheme, env: Value) -> Result<EvalResult, SchemeError>;
+    fn eval<'a>(&'a self, interp: &'a Scheme, env: Value) -> EvalFuture<'a>;
     fn is_false(&self) -> bool;
     fn display(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result;
     fn write(&self, interp: &Scheme, f: &mut fmt::Formatter<'_>) -> fmt::Result;
@@ -392,11 +395,13 @@ impl Value {
 }
 
 impl SchemeObject for Value {
-    fn eval(&self, interp: &Scheme, env: Value) -> Result<EvalResult, SchemeError> {
-        match self {
-            Value::Object(id) => id.eval(interp, env),
-            _ => Ok(EvalResult::Done(*self)),
-        }
+    fn eval<'a>(&'a self, interp: &'a Scheme, env: Value) -> EvalFuture<'a> {
+        Box::pin(async move {
+            match self {
+                Value::Object(id) => id.eval(interp, env).await,
+                _ => Ok(EvalResult::Done(*self)),
+            }
+        })
     }
 
     fn is_false(&self) -> bool {

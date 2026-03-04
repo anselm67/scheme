@@ -4,21 +4,21 @@ use crate::{
     types::{Number, SchemeError, Value},
 };
 
-fn eval_expr(interp: &Scheme, expr: Value) {
+async fn eval_expr(interp: &Scheme, expr: Value) {
     interp.display(expr);
-    let result = interp.eval(interp.env, expr);
+    let result = interp.eval(interp.env, expr).await;
     match result {
         Ok(val) => println!("{}", interp.display(val)),
         Err(e) => eprintln!("Error: {:?}", e),
     }
 }
 
-fn check_exprs(interp: &Scheme, inputs: &Vec<(&str, Value)>) {
+async fn check_exprs(interp: &Scheme, inputs: &Vec<(&str, Value)>) {
     for (text, expected) in inputs {
         let mut parser = Parser::from_string(text);
         let expr = parser.read(&interp);
         match expr {
-            Ok(expr) => match interp.eval(interp.env, expr.value()) {
+            Ok(expr) => match interp.eval(interp.env, expr.value()).await {
                 Ok(value) => assert_eq!(value, *expected),
                 Err(e) => panic!("Eval {} failed with error: {:?}", text, e),
             },
@@ -27,11 +27,11 @@ fn check_exprs(interp: &Scheme, inputs: &Vec<(&str, Value)>) {
     }
 }
 
-fn check_errors(interp: &Scheme, inputs: &Vec<(&str, SchemeError)>) {
+async fn check_errors(interp: &Scheme, inputs: &Vec<(&str, SchemeError)>) {
     for (text, expected) in inputs {
         let mut parser = Parser::from_string(text);
         if let Ok(expr) = parser.read(&interp) {
-            match interp.eval(interp.env, expr.value()) {
+            match interp.eval(interp.env, expr.value()).await {
                 Ok(_) => panic!("Failure was expected, but success happened!"),
                 Err(e) => assert_eq!(e, *expected),
             }
@@ -41,9 +41,9 @@ fn check_errors(interp: &Scheme, inputs: &Vec<(&str, SchemeError)>) {
     }
 }
 
-#[test]
-fn test_cond() {
-    let interp = Scheme::new(&SchemeOptions::new());
+#[tokio::test]
+async fn test_cond() {
+    let interp = Scheme::new(&SchemeOptions::new()).await;
     let cond = interp.lookup("if");
     let tru = interp.lookup("#t");
     let fls = interp.lookup("#f");
@@ -62,13 +62,13 @@ fn test_cond() {
         Value::Number(Number::Int(0)),
     ]);
 
-    eval_expr(&interp, cond_expr_true.value());
-    eval_expr(&interp, cond_expr_false.value());
+    eval_expr(&interp, cond_expr_true.value()).await;
+    eval_expr(&interp, cond_expr_false.value()).await;
 }
 
-#[test]
-fn test_nested_expr() {
-    let interp = Scheme::new(&SchemeOptions::new());
+#[tokio::test]
+async fn test_nested_expr() {
+    let interp = Scheme::new(&SchemeOptions::new()).await;
 
     let add = interp.lookup("+");
     let mul = interp.lookup("*");
@@ -86,24 +86,24 @@ fn test_nested_expr() {
         Value::Number(Number::Int(2)),
     ]);
 
-    eval_expr(&interp, list.value());
+    eval_expr(&interp, list.value()).await;
 }
 
-#[test]
-fn test_setbang_special_form() {
-    let interp = Scheme::new(&SchemeOptions::new());
+#[tokio::test]
+async fn test_setbang_special_form() {
+    let interp = Scheme::new(&SchemeOptions::new()).await;
 
     let define = interp.lookup("define").value();
     let x = interp.lookup("x");
 
     let expr = interp.alloc_list(&[define, x.value(), Value::Number(Number::Int(1))]);
 
-    eval_expr(&interp, expr.value());
-    eval_expr(&interp, x.value());
+    eval_expr(&interp, expr.value()).await;
+    eval_expr(&interp, x.value()).await;
 }
 
-#[test]
-fn test_read_eval_number() {
+#[tokio::test]
+async fn test_read_eval_number() {
     let inputs = vec![
         ("(* 3 2)", Value::Number(Number::Int(6))),
         ("(- 1)", Value::Number(Number::Int(-1))),
@@ -125,12 +125,12 @@ fn test_read_eval_number() {
         ("(max 4 2.0 1)", Value::Number(Number::Int(4))),
         ("(min 4 2.0 7)", Value::Number(Number::Float(2.0))),
     ];
-    let interp = Scheme::new(&SchemeOptions::new());
-    check_exprs(&interp, &inputs);
+    let interp = Scheme::new(&SchemeOptions::new()).await;
+    check_exprs(&interp, &inputs).await;
 }
 
-#[test]
-fn test_read_eval_closure() {
+#[tokio::test]
+async fn test_read_eval_closure() {
     let inputs = vec![
         (
             "((lambda (x . y) (length y)) 1 2 3)",
@@ -143,12 +143,12 @@ fn test_read_eval_closure() {
             Value::Number(Number::Int(3)),
         ),
     ];
-    let interp = Scheme::new(&SchemeOptions::new());
-    check_exprs(&interp, &inputs);
+    let interp = Scheme::new(&SchemeOptions::new()).await;
+    check_exprs(&interp, &inputs).await;
 }
 
-#[test]
-fn test_read_eval_list() {
+#[tokio::test]
+async fn test_read_eval_list() {
     let inputs = vec![
         ("(list? '(1 2))", Value::Boolean(true)),
         ("(append)", Value::Nil),
@@ -162,12 +162,12 @@ fn test_read_eval_list() {
         ("(car '(1 . 2))", Value::Number(Number::Int(1))),
         ("(cdr '(1 . 2))", Value::Number(Number::Int(2))),
     ];
-    let interp = Scheme::new(&SchemeOptions::new());
-    check_exprs(&interp, &inputs);
+    let interp = Scheme::new(&SchemeOptions::new()).await;
+    check_exprs(&interp, &inputs).await;
 }
 
-#[test]
-fn test_read_eval_char() {
+#[tokio::test]
+async fn test_read_eval_char() {
     let inputs = vec![
         ("(char? #\\A)", Value::Boolean(true)),
         ("(char? 10)", Value::Boolean(false)),
@@ -186,22 +186,22 @@ fn test_read_eval_char() {
         ("(char-ci>=? #\\A #\\a)", Value::Boolean(true)),
         ("(char-ci<=? #\\A #\\a)", Value::Boolean(true)),
     ];
-    let interp = Scheme::new(&SchemeOptions::new());
-    check_exprs(&interp, &inputs);
+    let interp = Scheme::new(&SchemeOptions::new()).await;
+    check_exprs(&interp, &inputs).await;
 }
 
-#[test]
-fn test_read_eval_functional() {
+#[tokio::test]
+async fn test_read_eval_functional() {
     let inputs = vec![(
         "(eval (append (list (list (quote lambda) (quote (x y)) (quote (+ x y))) 1 2)))",
         Value::Number(Number::Int(3)),
     )];
-    let interp = Scheme::new(&SchemeOptions::new());
-    check_exprs(&interp, &inputs);
+    let interp = Scheme::new(&SchemeOptions::new()).await;
+    check_exprs(&interp, &inputs).await;
 }
 
-#[test]
-fn test_equality() {
+#[tokio::test]
+async fn test_equality() {
     let inputs = vec![
         ("(eq? 1 1)", Value::Boolean(true)),
         ("(eq? 1 2)", Value::Boolean(false)),
@@ -211,13 +211,13 @@ fn test_equality() {
         ("(equal? (list 1) (list 1))", Value::Boolean(true)),
         ("(equal? (cons 1 2) (cons 1 2))", Value::Boolean(true)),
     ];
-    let interp = Scheme::new(&SchemeOptions::new());
-    check_exprs(&interp, &inputs);
+    let interp = Scheme::new(&SchemeOptions::new()).await;
+    check_exprs(&interp, &inputs).await;
 }
 
-#[test]
-fn test_user_error() {
+#[tokio::test]
+async fn test_user_error() {
     let inputs = vec![("(error \"a\")", SchemeError::UserError("a".to_string()))];
-    let interp = Scheme::new(&SchemeOptions::new());
-    check_errors(&interp, &inputs);
+    let interp = Scheme::new(&SchemeOptions::new()).await;
+    check_errors(&interp, &inputs).await;
 }

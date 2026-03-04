@@ -7,4 +7,6 @@ edition = "2024"
 regex = "1.10"
 rustyline = "17.0.2"
 clap = { version = "4.5", features = ["derive"] }
+tokio = { version = "1.49.0", features = [ "full"] }
+async-recursion = "1.1.1"
 
