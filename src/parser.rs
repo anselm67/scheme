@@ -1,6 +1,9 @@
-use std::io::{BufRead, BufReader, Bytes, Cursor, Read};
-use std::iter::Peekable;
+use std::io::Cursor;
 use std::path::Path;
+
+use async_recursion::async_recursion;
+use tokio::fs::File;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 
 use crate::heap::Handle;
 use crate::interp::Scheme;
@@ -9,11 +12,11 @@ use crate::types::{Location, Number, SchemeError, Value};
 pub struct Parser<'a> {
     location: Location,
     last_location: Location,
-    reader: Peekable<Bytes<Box<dyn BufRead + 'a>>>,
+    reader: Box<dyn AsyncBufRead + Unpin + 'a>,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(reader: Box<dyn BufRead + 'a>) -> Self {
+    pub fn new(reader: Box<dyn AsyncBufRead + Unpin + 'a>) -> Self {
         let location = Location {
             source: "unknown".to_string(),
             lineno: 1,
@@ -21,11 +24,11 @@ impl<'a> Parser<'a> {
         Self {
             location: location.clone(),
             last_location: location.clone(),
-            reader: reader.bytes().peekable(),
+            reader: reader,
         }
     }
 
-    fn new_with_name(source: &str, reader: Box<dyn BufRead + 'a>) -> Self {
+    fn new_with_name(source: &str, reader: Box<dyn AsyncBufRead + Unpin + 'a>) -> Self {
         let location = Location {
             source: source.to_string(),
             lineno: 1,
@@ -33,47 +36,58 @@ impl<'a> Parser<'a> {
         Self {
             location: location.clone(),
             last_location: location.clone(),
-            reader: reader.bytes().peekable(),
+            reader: reader,
         }
     }
 
-    pub fn from_reader(reader: Box<dyn BufRead + 'a>) -> Self {
+    pub fn from_reader(reader: Box<dyn AsyncBufRead + Unpin + 'a>) -> Self {
         Parser::new(reader)
     }
 
-    pub fn from_borrowed(reader: &'a mut dyn BufRead) -> Self {
+    pub fn from_borrowed(reader: &'a mut (dyn AsyncBufRead + Unpin)) -> Self {
         Parser::new(Box::new(reader))
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, SchemeError> {
+    pub async fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, SchemeError> {
         let path = path.as_ref();
         let source = path.to_str().unwrap_or("<invalid-path>");
-        let file =
-            std::fs::File::open(path).map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
+        let file = File::open(path)
+            .await
+            .map_err(|e| SchemeError::FileNotFound(e.to_string()))?;
         let buffered = BufReader::new(file);
-        let reader: Box<dyn BufRead + 'a> = Box::new(buffered);
+        let reader: Box<dyn AsyncBufRead + Unpin + 'a> = Box::new(buffered);
         Ok(Parser::new_with_name(source, reader))
     }
 
     pub fn from_string(content: &'a str) -> Self {
         Parser::new_with_name(
             "<string>",
-            Box::new(Cursor::new(content)) as Box<dyn BufRead + 'a>,
+            Box::new(Cursor::new(content)) as Box<dyn AsyncBufRead + Unpin + 'a>,
         )
     }
 
-    fn peek(&mut self) -> Option<u8> {
-        self.reader.peek()?.as_ref().ok().cloned()
+    async fn peek(&mut self) -> Result<Option<u8>, SchemeError> {
+        let buf = self
+            .reader
+            .fill_buf()
+            .await
+            .map_err(|e| SchemeError::IOError(format!("IO Error parsing input: {e}")))?;
+        Ok(if buf.len() == 0 {
+            None
+        } else {
+            buf.first().copied()
+        })
     }
 
-    fn next(&mut self) -> Option<u8> {
-        let ch = self.reader.next()?.ok();
+    async fn next(&mut self) -> Result<Option<u8>, SchemeError> {
+        let ch = self.peek().await?;
+        self.reader.consume(1);
         if let Some(lf) = ch
             && lf == b'\n'
         {
             self.location.lineno += 1;
         }
-        ch
+        Ok(ch)
     }
 
     fn syntax_error<T>(&self, msg: String) -> Result<T, SchemeError> {
@@ -83,10 +97,10 @@ impl<'a> Parser<'a> {
         )))
     }
 
-    fn check_for(&mut self, expected: u8) -> Result<Value, SchemeError> {
-        match self.peek() {
+    async fn check_for(&mut self, expected: u8) -> Result<Value, SchemeError> {
+        match self.peek().await? {
             Some(actual) if actual == expected => {
-                self.next();
+                self.next().await?;
                 Ok(Value::Unbound)
             }
             Some(actual) => self.syntax_error(format!(
@@ -108,13 +122,13 @@ impl<'a> Parser<'a> {
         ch.is_ascii_alphanumeric() || b"?+-.!$%&*:/<=>~^_".contains(&ch)
     }
 
-    fn skip_whitespace(&mut self) {
-        while let Some(ch) = self.peek() {
+    async fn skip_whitespace(&mut self) -> Result<(), SchemeError> {
+        while let Some(ch) = self.peek().await? {
             if self.is_whitespace(ch) {
-                self.next();
+                self.next().await?;
             } else if ch == b';' {
                 // Skip comment until end of line
-                while let Some(n) = self.next() {
+                while let Some(n) = self.next().await? {
                     if n == b'\n' {
                         break;
                     }
@@ -123,9 +137,10 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
+        Ok(())
     }
 
-    fn parse_number_with_sign(
+    async fn parse_number_with_sign(
         &mut self,
         interp: &Scheme,
         sign: Option<u8>,
@@ -138,30 +153,30 @@ impl<'a> Parser<'a> {
         let mut has_exponent = false;
 
         // Swallows the optional sign.
-        if let Some(ch) = self.peek()
+        if let Some(ch) = self.peek().await?
             && (ch == b'-' || ch == b'+')
         {
             token.push(ch as char);
-            self.next();
+            self.next().await?;
         }
-        while let Some(ch) = self.peek() {
+        while let Some(ch) = self.peek().await? {
             if ch.is_ascii_digit() {
                 token.push(ch as char);
-                self.next();
+                self.next().await?;
             } else if ch == b'.' && !has_dot && !has_exponent {
                 has_dot = true;
                 token.push(ch as char);
-                self.next();
+                self.next().await?;
             } else if ch == b'e' || ch == b'E' && !has_exponent {
                 has_exponent = true;
                 token.push(ch as char);
-                self.next();
+                self.next().await?;
                 // Exponent sign
-                if let Some(next_ch) = self.peek()
+                if let Some(next_ch) = self.peek().await?
                     && (next_ch == b'-' || next_ch == b'+')
                 {
                     token.push(next_ch as char);
-                    self.next();
+                    self.next().await?;
                 }
             } else {
                 break;
@@ -180,11 +195,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_number(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
-        self.parse_number_with_sign(interp, None)
+    async fn parse_number(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
+        self.parse_number_with_sign(interp, None).await
     }
 
-    fn parse_symbol_with_lead(
+    async fn parse_symbol_with_lead(
         &mut self,
         interp: &Scheme,
         lead: Option<u8>,
@@ -193,10 +208,10 @@ impl<'a> Parser<'a> {
         if let Some(ch) = lead {
             token.push(ch as char)
         }
-        while let Some(ch) = self.peek() {
+        while let Some(ch) = self.peek().await? {
             if self.is_symbol(ch) {
                 token.push(ch as char);
-                self.next();
+                self.next().await?;
             } else {
                 break;
             }
@@ -204,16 +219,20 @@ impl<'a> Parser<'a> {
         return Ok(interp.lookup(&token.to_lowercase()));
     }
 
-    fn parse_symbol(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
-        return self.parse_symbol_with_lead(interp, None);
+    async fn parse_symbol(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
+        return self.parse_symbol_with_lead(interp, None).await;
     }
 
-    fn parse_hash_number(&mut self, interp: &Scheme, radix: u32) -> Result<Handle, SchemeError> {
+    async fn parse_hash_number(
+        &mut self,
+        interp: &Scheme,
+        radix: u32,
+    ) -> Result<Handle, SchemeError> {
         let mut token = String::new();
-        while let Some(byte) = self.peek() {
+        while let Some(byte) = self.peek().await? {
             let ch = byte as char;
             if ch.is_digit(radix) {
-                self.next();
+                self.next().await?;
                 token.push(ch);
             } else {
                 break;
@@ -225,17 +244,17 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_hash_character(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
+    async fn parse_hash_character(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         let mut token = String::new();
-        while let Some(ch) = self.peek() {
+        while let Some(ch) = self.peek().await? {
             let ch = ch as char;
             if ch.is_alphanumeric() {
-                self.next();
+                self.next().await?;
                 token.push(ch);
             } else if matches!(ch, ' ' | ';' | '(' | '.' | ')' | '*' | '?' | '\\' | '"')
                 && token.is_empty()
             {
-                self.next();
+                self.next().await?;
                 token.push(ch);
                 break;
             } else {
@@ -256,17 +275,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_hash(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
-        self.check_for(b'#')?;
-        match self.next() {
-            Some(ch) if ch == b'(' => self.parse_vector(interp),
+    #[async_recursion(?Send)]
+    async fn parse_hash(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
+        self.check_for(b'#').await?;
+        match self.next().await? {
+            Some(ch) if ch == b'(' => self.parse_vector(interp).await,
             Some(ch) if ch.to_ascii_lowercase() == b't' => Ok(interp.handle(Value::Boolean(true))),
             Some(ch) if ch.to_ascii_lowercase() == b'f' => Ok(interp.handle(Value::Boolean(false))),
-            Some(ch) if ch == b'b' => self.parse_hash_number(interp, 2),
-            Some(ch) if ch == b'o' => self.parse_hash_number(interp, 8),
-            Some(ch) if ch == b'd' => self.parse_hash_number(interp, 10),
-            Some(ch) if ch == b'x' => self.parse_hash_number(interp, 16),
-            Some(ch) if ch == b'\\' => self.parse_hash_character(interp),
+            Some(ch) if ch == b'b' => self.parse_hash_number(interp, 2).await,
+            Some(ch) if ch == b'o' => self.parse_hash_number(interp, 8).await,
+            Some(ch) if ch == b'd' => self.parse_hash_number(interp, 10).await,
+            Some(ch) if ch == b'x' => self.parse_hash_number(interp, 16).await,
+            Some(ch) if ch == b'\\' => self.parse_hash_character(interp).await,
             Some(ch) => self.syntax_error(format!("Invalid char in # sequence {}", ch as char)),
             None => self.syntax_error(format!(
                 "Unexpected end of file while parsing a # expression."
@@ -274,15 +294,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_string(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
+    async fn parse_string(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         let mut token = String::new();
-        self.check_for(b'"')?;
-        while let Some(ch) = self.peek() {
-            self.next();
+        self.check_for(b'"').await?;
+        while let Some(ch) = self.peek().await? {
+            self.next().await?;
             if ch == b'"' {
                 return Ok(interp.alloc_string(token));
             } else if ch == b'\\' {
-                match self.next() {
+                match self.next().await? {
                     Some(ch) if ch == b'n' => token.push('\n'),
                     Some(ch) if ch == b'r' => token.push('\r'),
                     Some(ch) if ch == b't' => token.push('\t'),
@@ -299,26 +319,27 @@ impl<'a> Parser<'a> {
         self.syntax_error(format!("Unexpected end of file while parsing string."))
     }
 
-    fn parse_list(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
+    #[async_recursion(?Send)]
+    async fn parse_list(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         let mut items = Vec::new();
-        self.skip_whitespace();
-        while let Some(c) = self.peek() {
+        self.skip_whitespace().await?;
+        while let Some(c) = self.peek().await? {
             match c {
                 b')' => {
-                    self.check_for(b')')?;
+                    self.check_for(b')').await?;
                     return Ok(interp.alloc_list_from_handles(&items));
                 }
                 b'.' => {
-                    self.next();
-                    if let Some(lead) = self.peek()
+                    self.next().await?;
+                    if let Some(lead) = self.peek().await?
                         && self.is_symbol(lead)
                     {
-                        let symbol = self.parse_symbol_with_lead(interp, Some(b'.'))?;
+                        let symbol = self.parse_symbol_with_lead(interp, Some(b'.')).await?;
                         items.push(symbol);
                     } else {
-                        let cdr = self.do_read(interp)?;
-                        self.skip_whitespace();
-                        self.check_for(b')')?;
+                        let cdr = self.do_read(interp).await?;
+                        self.skip_whitespace().await?;
+                        self.check_for(b')').await?;
                         let car = interp.alloc_list_from_handles(&items);
                         let tail = interp.last(car.value())?;
                         interp.setcdr(interp.to_object(tail)?, cdr.value())?;
@@ -326,83 +347,84 @@ impl<'a> Parser<'a> {
                     }
                 }
                 _ => {
-                    items.push(self.do_read(interp)?);
-                    self.skip_whitespace();
+                    items.push(self.do_read(interp).await?);
+                    self.skip_whitespace().await?;
                 }
             }
         }
         self.syntax_error(format!("Unexpected end of file while parsing list."))
     }
 
-    fn parse_vector(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
+    async fn parse_vector(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         let mut list = Vec::new();
-        self.skip_whitespace();
-        while let Some(c) = self.peek() {
+        self.skip_whitespace().await?;
+        while let Some(c) = self.peek().await? {
             if c == b')' {
                 break;
             }
-            list.push(self.do_read(interp)?);
-            self.skip_whitespace();
+            list.push(self.do_read(interp).await?);
+            self.skip_whitespace().await?;
         }
-        self.check_for(b')')?;
+        self.check_for(b')').await?;
         return Ok(interp.alloc_vector_from_handles(&list));
     }
 
-    fn do_read(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
-        self.skip_whitespace();
-        let current = self.peek();
+    #[async_recursion(?Send)]
+    async fn do_read(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
+        self.skip_whitespace().await?;
+        let current = self.peek().await?;
         return match current {
             Some(b'(') => {
-                self.next(); // consume '('
-                self.parse_list(interp)
+                self.next().await?; // consume '('
+                self.parse_list(interp).await
             }
             Some(ch) if ch == b'+' || ch == b'-' => {
-                self.next();
-                match self.peek() {
+                self.next().await?;
+                match self.peek().await? {
                     Some(next) if next.is_ascii_digit() => {
-                        self.parse_number_with_sign(interp, Some(ch))
+                        self.parse_number_with_sign(interp, Some(ch)).await
                     }
-                    _ => self.parse_symbol_with_lead(interp, Some(ch)),
+                    _ => self.parse_symbol_with_lead(interp, Some(ch)).await,
                 }
             }
             Some(ch) if ch.is_ascii_digit() || ch == b'-' || ch == b'+' => {
-                self.parse_number(interp)
+                self.parse_number(interp).await
             }
-            Some(ch) if self.is_symbol(ch) => self.parse_symbol(interp),
-            Some(ch) if ch == b'#' => self.parse_hash(interp),
-            Some(b'"') => return self.parse_string(interp),
+            Some(ch) if self.is_symbol(ch) => self.parse_symbol(interp).await,
+            Some(ch) if ch == b'#' => self.parse_hash(interp).await,
+            Some(b'"') => return self.parse_string(interp).await,
             Some(ch) if ch == b'`' => {
-                self.next();
-                let value = self.do_read(interp)?;
+                self.next().await?;
+                let value = self.do_read(interp).await?;
                 interp.quasiquote(value)
             }
             Some(ch) if ch == b',' => {
-                self.next();
-                let retval = match self.peek() {
+                self.next().await?;
+                let retval = match self.peek().await? {
                     Some(b'@') => {
-                        self.next();
-                        interp.unquote_splicing(self.do_read(interp)?)
+                        self.next().await?;
+                        interp.unquote_splicing(self.do_read(interp).await?)
                     }
-                    _ => interp.unquote(self.do_read(interp)?),
+                    _ => interp.unquote(self.do_read(interp).await?),
                 };
-                self.skip_whitespace();
+                self.skip_whitespace().await?;
                 retval
             }
             Some(ch) if ch == b'\'' => {
-                self.next();
-                interp.quote_from_handle(self.do_read(interp)?)
+                self.next().await?;
+                interp.quote_from_handle(self.do_read(interp).await?)
             }
             Some(ch) => {
-                self.next();
+                self.next().await?;
                 self.syntax_error(format!("Unexpected character {}", ch as char))
             }
             None => Ok(interp.handle(Value::Eof)),
         };
     }
 
-    pub fn read(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
+    pub async fn read(&mut self, interp: &Scheme) -> Result<Handle, SchemeError> {
         self.last_location = self.location.clone();
-        self.do_read(interp)
+        self.do_read(interp).await
     }
 
     pub fn last_location(&self) -> &Location {
@@ -435,7 +457,7 @@ mod tests {
         ];
         for (input, expect) in inputs.iter().zip(expected.iter()) {
             let mut parser = Parser::from_string(input);
-            let result = parser.parse_number(&interp).unwrap();
+            let result = parser.parse_number(&interp).await.unwrap();
             assert_eq!(&result.value(), expect);
         }
     }
@@ -463,7 +485,11 @@ mod tests {
             let mut parser = Parser::from_string(text);
             assert_eq!(
                 value,
-                parser.parse_hash(&interp).expect("valid input").value()
+                parser
+                    .parse_hash(&interp)
+                    .await
+                    .expect("valid input")
+                    .value()
             )
         }
     }
@@ -476,7 +502,7 @@ mod tests {
             let mut parser = Parser::from_string(text);
             let result = parser.parse_symbol(&interp);
             assert!(matches!(
-                result.expect("valid symbol").value(),
+                result.await.expect("valid symbol").value(),
                 Value::Object(_id)
             ));
         }
@@ -490,7 +516,7 @@ mod tests {
             let mut parser = Parser::from_string(text);
             let result = parser.parse_string(&interp);
             assert!(matches!(
-                result.expect("valid string").value(),
+                result.await.expect("valid string").value(),
                 Value::Object(_id)
             ));
         }
@@ -503,7 +529,7 @@ mod tests {
         for text in inputs {
             let mut parser = Parser::from_string(text);
             let result = parser.parse_list(&interp);
-            assert!(result.is_ok());
+            assert!(result.await.is_ok());
         }
     }
 }

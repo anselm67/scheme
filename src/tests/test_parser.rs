@@ -15,7 +15,7 @@ async fn test_parse_some_exprs() {
     ];
     for text in inputs {
         let mut parser = Parser::from_string(text);
-        let expr = parser.read(&interp);
+        let expr = parser.read(&interp).await;
         assert!(matches!(expr, Ok(_)));
     }
 }
@@ -27,7 +27,7 @@ async fn test_parse_fails() {
     let inputs = vec!["(* 2 3", "(define! x \\#a)"];
     for text in inputs {
         let mut parser = Parser::from_string(text);
-        let expr = parser.read(&interp);
+        let expr = parser.read(&interp).await;
         assert!(matches!(expr, Err(_)));
     }
 }

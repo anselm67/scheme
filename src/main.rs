@@ -16,7 +16,7 @@ async fn eval_expr(interp: &Scheme, expr: Value) {
             let result = interp.eval(interp.env, expanded.value()).await;
             match result {
                 Ok(value) => {
-                    interp.flush_stdout();
+                    interp.flush_stdout().await;
                     println!(" = {}", interp.display(value));
                 }
                 Err(e) => eprintln!("Evaluation failed: {e}"),
@@ -41,7 +41,7 @@ async fn repl(interp: &Scheme) {
             Ok(line) => {
                 let _ = rl.add_history_entry(line.as_str());
                 let mut parser = Parser::from_string(&line);
-                let expr = parser.read(interp);
+                let expr = parser.read(interp).await;
                 match expr {
                     Ok(expr) => eval_expr(interp, expr.value()).await,
                     Err(e) => eprintln!("Error: {:?}", e),

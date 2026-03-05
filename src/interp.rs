@@ -1,10 +1,10 @@
 use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::rc::Rc;
 
 use async_recursion::async_recursion;
+use tokio::io::{AsyncBufRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter};
 
 use crate::env::Env;
 use crate::heap::{self, AsyncPrimitiveFn, Handle, Heap, PrimitiveFn};
@@ -177,17 +177,19 @@ impl Scheme {
 
     fn init_io(&self) {
         // Sets up stdin as the default input port.
-        let boxed_reader: Box<dyn BufRead> = Box::new(BufReader::new(std::io::stdin()));
+        let boxed_reader: Box<dyn AsyncBufRead + Unpin> =
+            Box::new(BufReader::new(tokio::io::stdin()));
         let input_port = self.alloc_input_port(Rc::new(RefCell::new(Some(boxed_reader))));
         self.input_stack.borrow_mut().push(input_port.value());
 
         // Sets up stdout as the default output port.
-        let boxed_writer: Box<dyn Write> = Box::new(BufWriter::new(std::io::stdout()));
+        let boxed_writer: Box<dyn AsyncWrite + Unpin> =
+            Box::new(BufWriter::new(tokio::io::stdout()));
         let output_port = self.alloc_output_port(&RefCell::new(Some(boxed_writer)));
         self.output_stack.borrow_mut().push(output_port.value())
     }
 
-    pub fn flush_stdout(&self) {
+    pub async fn flush_stdout(&self) {
         let stack = self.output_stack.borrow();
         let port_value = *stack.first().expect("Output stack should never be empty!");
         let output = self
@@ -195,7 +197,7 @@ impl Scheme {
             .expect("stdout should be a valid output port.");
         let mut guard = output.port.borrow_mut();
         if let Some(writer) = guard.as_deref_mut() {
-            let _ = writer.flush();
+            let _ = writer.flush().await;
         }
     }
 
@@ -295,11 +297,17 @@ impl Scheme {
         self.alloc_with_retry(|heap| heap.raw_alloc_vector_from_handles(items))
     }
 
-    pub fn alloc_input_port(&self, input: Rc<RefCell<Option<Box<dyn BufRead>>>>) -> Handle {
+    pub fn alloc_input_port(
+        &self,
+        input: Rc<RefCell<Option<Box<dyn AsyncBufRead + Unpin>>>>,
+    ) -> Handle {
         self.alloc_with_retry(|heap| heap.raw_alloc_input_port(input.clone()))
     }
 
-    pub fn alloc_output_port(&self, output: &RefCell<Option<Box<dyn Write>>>) -> Handle {
+    pub fn alloc_output_port(
+        &self,
+        output: &RefCell<Option<Box<dyn AsyncWrite + Unpin>>>,
+    ) -> Handle {
         self.alloc_with_retry(|heap| heap.raw_alloc_output_port(&output))
     }
 
@@ -357,7 +365,9 @@ impl Scheme {
         }
     }
 
-    pub fn get_input_port(&self) -> Result<Rc<RefCell<Option<Box<dyn BufRead>>>>, SchemeError> {
+    pub fn get_input_port(
+        &self,
+    ) -> Result<Rc<RefCell<Option<Box<dyn AsyncBufRead + Unpin>>>>, SchemeError> {
         if let Some(value) = self.input_stack.borrow().last() {
             self.to_input_port(*value)
         } else {
@@ -712,7 +722,7 @@ impl Scheme {
     pub fn to_input_port(
         &self,
         value: Value,
-    ) -> Result<Rc<RefCell<Option<Box<dyn BufRead>>>>, SchemeError> {
+    ) -> Result<Rc<RefCell<Option<Box<dyn AsyncBufRead + Unpin>>>>, SchemeError> {
         let id = self.to_object(value)?;
         let heap = self.heap.borrow();
         match heap.get(id) {
@@ -1090,7 +1100,7 @@ impl Scheme {
     async fn load_from_parser<'a>(&self, parser: &mut Parser<'a>) -> Result<Value, SchemeError> {
         let mut retval = Value::Eof;
         loop {
-            let handle = parser.read(self)?;
+            let handle = parser.read(self).await?;
             match handle.value() {
                 Value::Eof => return Ok(retval),
                 value => {
@@ -1102,7 +1112,7 @@ impl Scheme {
     }
 
     pub async fn load<P: AsRef<Path>>(&self, path: P) -> Result<Value, SchemeError> {
-        let mut parser = Parser::from_file(path)?;
+        let mut parser = Parser::from_file(path).await?;
         match self.load_from_parser(&mut parser).await {
             Err(error) => {
                 let location = parser.last_location().clone();
@@ -1141,7 +1151,7 @@ impl Scheme {
 
     pub async fn eval_string(&self, expr: &str) -> Result<Value, SchemeError> {
         let mut parser = Parser::from_string(expr);
-        let expr = parser.read(self)?;
+        let expr = parser.read(self).await?;
         let expanded = self.expand(expr.value()).await?;
         self.eval(self.env, expanded.value()).await
     }

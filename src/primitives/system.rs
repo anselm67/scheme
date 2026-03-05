@@ -1,5 +1,7 @@
 use std::process;
 
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+
 use crate::{
     interp::Scheme,
     types::{EvalFuture, EvalResult, GcId, SchemeError, Value},
@@ -24,23 +26,22 @@ fn primitive_heap_stats(
     EvalResult::done(Value::Nil)
 }
 
-fn primitive_debug(
-    interp: &Scheme,
-    _env: Value,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    let output = interp.get_output_port()?;
-    if let Some(ref mut port) = *output.port.borrow_mut() {
-        for (i, arg) in args.iter().enumerate() {
-            if i > 0 {
-                write!(port, " ")?;
+fn primitive_debug<'a>(interp: &'a Scheme, _env: Value, args: &'a [Value]) -> EvalFuture<'a> {
+    Box::pin(async move {
+        let output = interp.get_output_port()?;
+        if let Some(ref mut boxed) = *output.port.borrow_mut() {
+            let port: &mut (dyn AsyncWrite + Unpin) = boxed.as_mut();
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    port.write_all(" ".as_bytes()).await?;
+                }
+                port.write_all(interp.display(*arg).as_bytes()).await?;
             }
-            write!(port, "{}", interp.display(*arg))?;
+            port.write_all("\n".as_bytes()).await?;
+            port.flush().await?;
         }
-        writeln!(port)?;
-        port.flush()?;
-    }
-    EvalResult::bool(true)
+        EvalResult::bool(true)
+    })
 }
 
 fn primitive_load<'a>(interp: &'a Scheme, _env: Value, args: &'a [Value]) -> EvalFuture<'a> {
@@ -81,7 +82,7 @@ fn primitive_peek(interp: &Scheme, _env: Value, args: &[Value]) -> Result<EvalRe
 pub fn register(interp: &Scheme) {
     interp.define_primitive("gc", primitive_gc);
     interp.define_primitive("heap-stats", primitive_heap_stats);
-    interp.define_primitive("debug", primitive_debug);
+    interp.define_async_primitive("debug", primitive_debug);
     interp.define_async_primitive("load", primitive_load);
     interp.define_primitive("quit", primitive_quit);
     interp.define_primitive("exit", primitive_quit);

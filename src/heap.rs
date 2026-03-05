@@ -1,10 +1,5 @@
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    fmt,
-    io::{BufRead, Write},
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc, task::Poll};
+use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use crate::{
     check_arity, check_arity_range,
@@ -40,23 +35,39 @@ impl Closure {
         body
     }
 }
-#[derive(Clone)]
+
 struct StringWriter {
-    pub data: Rc<RefCell<Vec<u8>>>,
+    buffer: Rc<RefCell<Vec<u8>>>,
 }
 
-impl std::io::Write for StringWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.data.borrow_mut().extend_from_slice(buf);
-        Ok(buf.len())
+impl AsyncWrite for StringWriter {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let mut b = self.buffer.borrow_mut();
+        b.extend_from_slice(buf);
+        Poll::Ready(Ok(buf.len()))
     }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Poll::Ready(Ok(()))
     }
 }
 
 pub struct OutputPort {
-    pub port: RefCell<Option<Box<dyn Write>>>,
+    pub port: RefCell<Option<Box<dyn AsyncWrite + Unpin>>>,
     // The buffer is shared betwen the port and the writer.
     pub string_buffer: Option<Rc<RefCell<Vec<u8>>>>,
 }
@@ -71,7 +82,7 @@ pub enum HeapObject {
     Primitive(Rc<Primitive>),
     Closure(Box<Closure>),
     NaryClosure(Box<Closure>),
-    InputPort(Rc<RefCell<Option<Box<dyn BufRead>>>>),
+    InputPort(Rc<RefCell<Option<Box<dyn AsyncBufRead + Unpin>>>>),
     OutputPort(Rc<OutputPort>),
     Env(Rc<RefCell<Env>>),
 }
@@ -628,7 +639,7 @@ impl Heap {
 
     pub fn raw_alloc_input_port(
         &mut self,
-        input: Rc<RefCell<Option<Box<dyn BufRead>>>>,
+        input: Rc<RefCell<Option<Box<dyn AsyncBufRead + Unpin>>>>,
     ) -> Result<Handle, SchemeError> {
         let id = self.next_id()?;
         self.objects[id] = HeapObject::InputPort(input);
@@ -637,7 +648,7 @@ impl Heap {
 
     pub fn raw_alloc_output_port(
         &mut self,
-        output: &RefCell<Option<Box<dyn Write>>>,
+        output: &RefCell<Option<Box<dyn AsyncWrite + Unpin>>>,
     ) -> Result<Handle, SchemeError> {
         let id = self.next_id()?;
         let port_ref = output.borrow_mut().take().expect("");
@@ -652,10 +663,11 @@ impl Heap {
         let id = self.next_id()?;
         let buffer = Rc::new(RefCell::new(Vec::<u8>::new()));
         let writer = StringWriter {
-            data: buffer.clone(),
+            buffer: buffer.clone(),
         };
+        let boxed: Box<dyn AsyncWrite + Unpin> = Box::new(writer);
         self.objects[id] = HeapObject::OutputPort(Rc::new(OutputPort {
-            port: RefCell::new(Some(Box::new(writer) as Box<dyn Write>)),
+            port: RefCell::new(Some(boxed)),
             string_buffer: Some(buffer.clone()),
         }));
         Ok(self.handle_id(id))

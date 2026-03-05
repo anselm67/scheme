@@ -16,7 +16,7 @@ async fn eval_expr(interp: &Scheme, expr: Value) {
 async fn check_exprs(interp: &Scheme, inputs: &Vec<(&str, Value)>) {
     for (text, expected) in inputs {
         let mut parser = Parser::from_string(text);
-        let expr = parser.read(&interp);
+        let expr = parser.read(&interp).await;
         match expr {
             Ok(expr) => match interp.eval(interp.env, expr.value()).await {
                 Ok(value) => assert_eq!(value, *expected),
@@ -30,7 +30,7 @@ async fn check_exprs(interp: &Scheme, inputs: &Vec<(&str, Value)>) {
 async fn check_errors(interp: &Scheme, inputs: &Vec<(&str, SchemeError)>) {
     for (text, expected) in inputs {
         let mut parser = Parser::from_string(text);
-        if let Ok(expr) = parser.read(&interp) {
+        if let Ok(expr) = parser.read(&interp).await {
             match interp.eval(interp.env, expr.value()).await {
                 Ok(_) => panic!("Failure was expected, but success happened!"),
                 Err(e) => assert_eq!(e, *expected),
