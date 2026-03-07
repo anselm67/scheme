@@ -88,8 +88,8 @@ pub enum HeapObject {
     Symbol(Rc<str>),
     String(Rc<RefCell<String>>),
     Primitive(Rc<Primitive>),
-    Closure(Box<Closure>),
-    NaryClosure(Box<Closure>),
+    Closure(Rc<Closure>),
+    NaryClosure(Rc<Closure>),
     InputPort(Rc<RefCell<Option<Box<dyn AsyncBufRead + Unpin>>>>),
     OutputPort(Rc<OutputPort>),
     Env(Rc<RefCell<Env>>),
@@ -620,13 +620,13 @@ impl Heap {
 
     pub fn raw_alloc_closure(&mut self, closure: Closure) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
-        self.objects[id] = HeapObject::Closure(Box::new(closure));
+        self.objects[id] = HeapObject::Closure(Rc::new(closure));
         Ok(self.handle_id(id))
     }
 
     pub fn raw_alloc_nary_closure(&mut self, closure: Closure) -> Result<Handle, SchemeError> {
         let id: GcId = self.next_id()?;
-        self.objects[id] = HeapObject::NaryClosure(Box::new(closure));
+        self.objects[id] = HeapObject::NaryClosure(Rc::new(closure));
         Ok(self.handle_id(id))
     }
 
@@ -983,10 +983,10 @@ impl SchemeObject for GcId {
             HeapObject::String(_) => {}
             HeapObject::Primitive(_) => {}
             HeapObject::Closure(closure) | HeapObject::NaryClosure(closure) => {
-                for id in closure.params {
+                for id in &closure.params {
                     id.mark(interp, marks);
                 }
-                for expr in closure.body {
+                for expr in &closure.body {
                     expr.mark(interp, marks);
                 }
                 closure.tail.mark(interp, marks);
