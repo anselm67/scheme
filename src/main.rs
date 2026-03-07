@@ -1,67 +1,36 @@
 use clap::ArgAction;
-use rustyline::DefaultEditor;
-use rustyline::error::ReadlineError;
 use scheme::parser::Parser;
+use scheme::repl::{ReplRequest, repl};
 use scheme::types::Value;
 
 use scheme::interp::{Scheme, SchemeOptions};
+use tokio::sync::mpsc::{self};
+use tokio::task::{spawn_blocking, spawn_local};
 
-async fn eval_expr(interp: &Scheme, expr: Value) {
+async fn eval_expr(interp: &Scheme, expr: Value) -> String {
     let expansion = interp.expand(expr).await;
     match expansion {
         Ok(expanded) => {
             if interp.debug_macro {
-                println!("expanded => {}", interp.display(expanded.value()));
+                eprintln!("expanded => {}", interp.display(expanded.value()));
             }
             let result = interp.eval(interp.env, expanded.value()).await;
             match result {
-                Ok(value) => {
-                    interp.flush_stdout().await;
-                    println!(" = {}", interp.display(value));
-                }
-                Err(e) => eprintln!("Evaluation failed: {e}"),
+                Ok(value) => interp.display(value),
+                Err(e) => format!("Evaluation failed: {e}"),
             }
         }
-        Err(e) => eprintln!("Expansion failed: {e}"),
+        Err(e) => format!("Expansion failed: {e}"),
     }
 }
 
-const HISTORY_FILENAME: &str = ".scheme.history";
-
-async fn repl(interp: &Scheme) {
-    let mut rl = DefaultEditor::new().expect("Failed to init REPL.");
-
-    if rl.load_history(HISTORY_FILENAME).is_err() {
-        println!("No previous history.");
+async fn eval_text(interp: &Scheme, text: &str) -> String {
+    let mut parser = Parser::from_string(text);
+    let expr = parser.read(interp).await;
+    match expr {
+        Ok(expr) => eval_expr(interp, expr.value()).await,
+        Err(e) => format!("Error: {:?}", e).to_string(),
     }
-
-    loop {
-        let readline = rl.readline("> ");
-        match readline {
-            Ok(line) => {
-                let _ = rl.add_history_entry(line.as_str());
-                let mut parser = Parser::from_string(&line);
-                let expr = parser.read(interp).await;
-                match expr {
-                    Ok(expr) => eval_expr(interp, expr.value()).await,
-                    Err(e) => eprintln!("Error: {:?}", e),
-                }
-            }
-            Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
-                break;
-            }
-            Err(ReadlineError::Eof) => {
-                break;
-            }
-            Err(err) => {
-                println!("Error: {:?}", err);
-                break;
-            }
-        }
-    }
-    rl.save_history(HISTORY_FILENAME)
-        .expect(format!("Failed to save history to {}.", HISTORY_FILENAME).as_str());
 }
 
 #[derive(clap::Parser, Debug)]
@@ -94,28 +63,42 @@ struct Arg {
 #[tokio::main]
 async fn main() {
     let arg = <Arg as clap::Parser>::parse();
+    let (tx, mut rx) = mpsc::channel::<ReplRequest>(100);
+
     let local = tokio::task::LocalSet::new();
     local
-        .run_until(async {
-            let options = SchemeOptions::new()
-                .set_init_scheme(arg.init)
-                .set_debug_macro(arg.debug_macro)
-                .set_verbose_gc(arg.verbose_gc)
-                .set_heap_size(arg.heap_size);
-            let interp = Scheme::new(&options).await;
-            for file in &arg.files {
-                println!("Loading {}", file);
-                match interp.load(file).await {
-                    Err(e) => {
-                        panic!("Failed to load {}: {}", file.to_string(), e);
+        .run_until(async move {
+            let worker = spawn_local(async move {
+                let options = SchemeOptions::new()
+                    .set_init_scheme(arg.init)
+                    .set_debug_macro(arg.debug_macro)
+                    .set_verbose_gc(arg.verbose_gc)
+                    .set_heap_size(arg.heap_size);
+                let interp = Scheme::new(&options).await;
+                for file in &arg.files {
+                    println!("Loading {}", file);
+                    match interp.load(file).await {
+                        Err(e) => {
+                            panic!("Failed to load {}: {}", file.to_string(), e);
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            }
-            for expr in &arg.exprs {
-                let _ = interp.eval_string(expr).await;
-            }
-            repl(&interp).await;
+                for expr in &arg.exprs {
+                    let _ = interp.eval_string(expr).await;
+                }
+                while let Some(request) = rx.recv().await {
+                    let output_string = eval_text(&interp, &request.input).await;
+                    let _ = request.reply_to.send(output_string);
+                }
+                println!("Bye !");
+            });
+            let tx_clone = tx.clone();
+            spawn_blocking(move || {
+                repl(tx_clone);
+            });
+            drop(tx);
+            let _ = worker.await;
         })
-        .await
+        .await;
 }

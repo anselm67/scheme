@@ -7,7 +7,7 @@ use async_recursion::async_recursion;
 use tokio::io::{AsyncBufRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter};
 
 use crate::env::Env;
-use crate::heap::{self, AsyncPrimitiveFn, Handle, Heap, PrimitiveFn};
+use crate::heap::{self, AsyncPrimitiveFn, ForeignObject, Handle, Heap, PrimitiveFn};
 use crate::heap::{Apply, Closure, HeapObject, Keyword, OutputPort};
 use crate::markset::MarkSet;
 use crate::parser::Parser;
@@ -279,6 +279,10 @@ impl Scheme {
 
     pub fn alloc_async_primitive(&self, name: Rc<str>, func: AsyncPrimitiveFn) -> Handle {
         self.alloc_with_retry(|heap| heap.raw_alloc_async_primitive(name.clone(), func))
+    }
+
+    pub fn alloc_foreign(&self, foreign: Rc<ForeignObject>) -> Handle {
+        self.alloc_with_retry(|heap| heap.raw_alloc_foreign(foreign.clone()))
     }
 
     pub fn alloc_closure(&self, closure: Closure) -> Handle {
@@ -758,6 +762,30 @@ impl Scheme {
         }
     }
 
+    pub fn is_foreign(&self, value: Value) -> bool {
+        if let Some(id) = self.is_object(value) {
+            let heap = self.heap.borrow();
+            match heap.get(id) {
+                HeapObject::Foreign(_) => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    pub fn to_foreign(&self, value: Value) -> Result<Rc<ForeignObject>, SchemeError> {
+        let id = self.to_object(value)?;
+        let heap = self.heap.borrow();
+        match heap.get(id) {
+            HeapObject::Foreign(foreign) => Ok(foreign.clone()),
+            _ => Err(SchemeError::TypeError(format!(
+                "Expected an InputPort, but got a {}",
+                value.type_name()
+            ))),
+        }
+    }
+
     pub fn is_object(&self, value: Value) -> Option<GcId> {
         match value {
             Value::Object(id) => Some(id),
@@ -1122,6 +1150,19 @@ impl Scheme {
         }
     }
 
+    /// Runs the garbage collector.
+    ///
+    /// The garbage collector needs to run in one go: we can't afford to have
+    /// any Scheme code run while it's at work. You've been warned!
+    ///
+    /// # Examples
+    /// ```
+    /// # tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+    /// use scheme::interp::{Scheme, SchemeOptions};
+    /// let interp = Scheme::new(&SchemeOptions::new()).await;
+    /// &interp.gc(None);
+    /// # });
+    /// ```
     pub fn gc(&self, env: Option<Value>) {
         let len = { self.heap.borrow().len() };
         let mut marks = MarkSet::new(len);
@@ -1149,8 +1190,23 @@ impl Scheme {
         }
     }
 
-    pub async fn eval_string(&self, expr: &str) -> Result<Value, SchemeError> {
-        let mut parser = Parser::from_string(expr);
+    /// Evaluates the Scheme code `text` in this interpreter.
+    ///
+    /// Parses `text` and evaluates its into a Value. If parsing fails or if
+    /// the evaluation fails, returns a `SchemeError`
+    /// # Examples
+    /// ```
+    /// # tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+    /// use scheme::{interp::{Scheme, SchemeOptions}, types::Value};
+    /// let interp = Scheme::new(&SchemeOptions::new()).await;
+    ///
+    /// let result = interp.eval_string("(+ 1 1)").await;
+    /// assert_eq!(result.is_ok_and(|value| value == Value::int(2)), true);
+    ///
+    /// # });
+    /// ```
+    pub async fn eval_string(&self, text: &str) -> Result<Value, SchemeError> {
+        let mut parser = Parser::from_string(text);
         let expr = parser.read(self).await?;
         let expanded = self.expand(expr.value()).await?;
         self.eval(self.env, expanded.value()).await

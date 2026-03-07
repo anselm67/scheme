@@ -25,6 +25,7 @@ pub enum SchemeError {
     IOError(String),
     OutOfMemoryError(String),
     UnsupportedError(String),
+    AsyncError(String),
     At(Location, Box<SchemeError>), // Other error types can be added here
 }
 
@@ -44,6 +45,7 @@ impl SchemeError {
             SchemeError::IOError(m) => ("I/O error", m),
             SchemeError::OutOfMemoryError(m) => ("Out of memory error", m),
             SchemeError::UnsupportedError(m) => ("Unsupported feature", m),
+            SchemeError::AsyncError(m) => ("Async error", m),
             SchemeError::At(_, error) => ("Located error", error.get_infos().1),
         }
     }

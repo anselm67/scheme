@@ -72,6 +72,11 @@ pub struct OutputPort {
     pub string_buffer: Option<Rc<RefCell<Vec<u8>>>>,
 }
 
+pub struct ForeignObject {
+    pub pointer: Box<dyn std::any::Any>,
+    pub type_name: &'static str,
+}
+
 #[derive(Clone)]
 pub enum HeapObject {
     FreeSlot(GcId),
@@ -85,6 +90,7 @@ pub enum HeapObject {
     InputPort(Rc<RefCell<Option<Box<dyn AsyncBufRead + Unpin>>>>),
     OutputPort(Rc<OutputPort>),
     Env(Rc<RefCell<Env>>),
+    Foreign(Rc<ForeignObject>),
 }
 
 impl HeapObject {
@@ -101,6 +107,7 @@ impl HeapObject {
             Self::InputPort(_) => "InputPort",
             Self::OutputPort(_) => "OutputPort",
             Self::Env(_) => "Env",
+            Self::Foreign(_) => "Foreign",
         }
     }
 
@@ -651,7 +658,10 @@ impl Heap {
         output: &RefCell<Option<Box<dyn AsyncWrite + Unpin>>>,
     ) -> Result<Handle, SchemeError> {
         let id = self.next_id()?;
-        let port_ref = output.borrow_mut().take().expect("");
+        let port_ref = output
+            .borrow_mut()
+            .take()
+            .expect("Implementation error: expected a valid AsyncWrite.");
         self.objects[id] = HeapObject::OutputPort(Rc::new(OutputPort {
             port: RefCell::new(Some(port_ref)),
             string_buffer: None,
@@ -670,6 +680,12 @@ impl Heap {
             port: RefCell::new(Some(boxed)),
             string_buffer: Some(buffer.clone()),
         }));
+        Ok(self.handle_id(id))
+    }
+
+    pub fn raw_alloc_foreign(&mut self, foreign: Rc<ForeignObject>) -> Result<Handle, SchemeError> {
+        let id = self.next_id()?;
+        self.objects[id] = HeapObject::Foreign(foreign.clone());
         Ok(self.handle_id(id))
     }
 
@@ -888,6 +904,7 @@ impl SchemeObject for GcId {
             HeapObject::InputPort(_) => write!(f, "<input-port {}>", id),
             HeapObject::OutputPort(_) => write!(f, "<output-port {}>", id),
             HeapObject::Env(_) => write!(f, "<env {id}>"),
+            HeapObject::Foreign(foreign) => write!(f, "<foreign:{} {}>", foreign.type_name, id),
             HeapObject::FreeSlot(id) => panic!("Attempt to render free slot {}", id),
         }
     }
@@ -934,6 +951,7 @@ impl SchemeObject for GcId {
             HeapObject::InputPort(_) => write!(f, "<input-port {}>", id),
             HeapObject::OutputPort(_) => write!(f, "<output-port {}>", id),
             HeapObject::Env(_) => write!(f, "<env {id}>"),
+            HeapObject::Foreign(foreign) => write!(f, "<foreign:{} {}>", foreign.type_name, id),
             HeapObject::FreeSlot(id) => panic!("Attempt to render free slot {}", id),
         }
     }
@@ -976,6 +994,7 @@ impl SchemeObject for GcId {
             }
             HeapObject::InputPort(_) => {}
             HeapObject::OutputPort(_) => {}
+            HeapObject::Foreign(_) => {}
             _ => {
                 panic!("Request to mark a {}.", obj.type_name());
             }
