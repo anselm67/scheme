@@ -438,7 +438,6 @@ impl Scheme {
         }
     }
 
-    // TODO This might not be needed in the end.
     pub fn fold_list<T, F>(&self, list: Value, init: T, mut func: F) -> Result<T, SchemeError>
     where
         F: FnMut(T, Value) -> Result<T, SchemeError>,
