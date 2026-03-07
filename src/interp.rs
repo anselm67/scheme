@@ -195,8 +195,8 @@ impl Scheme {
         let output = self
             .to_output_port(port_value)
             .expect("stdout should be a valid output port.");
-        let mut guard = output.port.borrow_mut();
-        if let Some(writer) = guard.as_deref_mut() {
+        let mut guard = output.port.lock().await;
+        if let Some(ref mut writer) = *guard {
             let _ = writer.flush().await;
         }
     }
@@ -348,7 +348,7 @@ impl Scheme {
         Fut: Future<Output = Result<T, SchemeError>>,
     {
         let output = self.to_output_port(value)?;
-        if output.port.borrow().is_none() {
+        if output.port.lock().await.is_none() {
             Err(SchemeError::IOError(format!(
                 "Attempt to write to a closed output port."
             )))

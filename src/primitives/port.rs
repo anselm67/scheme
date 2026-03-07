@@ -208,15 +208,18 @@ fn primitive_get_output_string(
     }
 }
 
-fn primitive_close_output_port(
-    interp: &Scheme,
+fn primitive_close_output_port<'a>(
+    interp: &'a Scheme,
     _env: Value,
-    args: &[Value],
-) -> Result<EvalResult, SchemeError> {
-    check_arity!(args, 1);
-    let output = interp.to_output_port(args[0])?;
-    let _ = output.port.borrow_mut().take();
-    EvalResult::done(Value::Nil)
+    args: &'a [Value],
+) -> EvalFuture<'a> {
+    Box::pin(async move {
+        check_arity!(args, 1);
+        let output = interp.to_output_port(args[0])?;
+        let mut guard = output.port.lock().await;
+        let _ = guard.take();
+        EvalResult::done(Value::Nil)
+    })
 }
 
 fn primitive_flush_output_port<'a>(
@@ -230,8 +233,8 @@ fn primitive_flush_output_port<'a>(
         if args.len() > 0 {
             output = interp.to_output_port(args[0])?;
         }
-        let mut guard = output.port.borrow_mut();
-        if let Some(writer) = guard.as_deref_mut() {
+        let mut guard = output.port.lock().await;
+        if let Some(ref mut writer) = *guard {
             writer.flush().await?;
             EvalResult::done(Value::Nil)
         } else {
@@ -302,8 +305,8 @@ fn primitive_write_char<'a>(interp: &'a Scheme, _env: Value, args: &'a [Value]) 
             output = interp.to_output_port(args[1])?;
         }
 
-        let mut guard = output.port.borrow_mut();
-        if let Some(writer) = guard.as_deref_mut() {
+        let mut guard = output.port.lock().await;
+        if let Some(ref mut writer) = *guard {
             writer.write_u8(ch as u8).await?;
             EvalResult::done(Value::Nil)
         } else {
@@ -347,7 +350,8 @@ where
     if args.len() == 2 {
         output = interp.to_output_port(args[1])?;
     }
-    if let Some(ref mut port) = *output.port.borrow_mut() {
+    let mut guard = output.port.lock().await;
+    if let Some(ref mut port) = *guard {
         port.write_all(func(obj).as_bytes()).await?;
         port.flush().await?;
     }
@@ -371,7 +375,7 @@ pub fn register(interp: &Scheme) {
     interp.define_async_primitive("open-output-file", primitive_open_output_file);
     interp.define_primitive("open-output-string", primitive_open_output_string);
     interp.define_primitive("get-output-string", primitive_get_output_string);
-    interp.define_primitive("close-output-port", primitive_close_output_port);
+    interp.define_async_primitive("close-output-port", primitive_close_output_port);
     interp.define_async_primitive("read", primitive_read);
     interp.define_async_primitive("read-char", primitive_read_char);
     interp.define_async_primitive("read-line", primitive_read_line);

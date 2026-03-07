@@ -29,7 +29,8 @@ fn primitive_heap_stats(
 fn primitive_debug<'a>(interp: &'a Scheme, _env: Value, args: &'a [Value]) -> EvalFuture<'a> {
     Box::pin(async move {
         let output = interp.get_output_port()?;
-        if let Some(ref mut boxed) = *output.port.borrow_mut() {
+        let mut guard = output.port.lock().await;
+        if let Some(ref mut boxed) = *guard {
             let port: &mut (dyn AsyncWrite + Unpin) = boxed.as_mut();
             for (i, arg) in args.iter().enumerate() {
                 if i > 0 {

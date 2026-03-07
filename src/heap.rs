@@ -1,5 +1,8 @@
-use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc, task::Poll};
-use tokio::io::{AsyncBufRead, AsyncWrite};
+use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc, sync::Arc, task::Poll};
+use tokio::{
+    io::{AsyncBufRead, AsyncWrite},
+    sync::Mutex,
+};
 
 use crate::{
     check_arity, check_arity_range,
@@ -67,7 +70,7 @@ impl AsyncWrite for StringWriter {
 }
 
 pub struct OutputPort {
-    pub port: RefCell<Option<Box<dyn AsyncWrite + Unpin>>>,
+    pub port: Arc<Mutex<Option<Box<dyn AsyncWrite + Unpin>>>>,
     // The buffer is shared betwen the port and the writer.
     pub string_buffer: Option<Rc<RefCell<Vec<u8>>>>,
 }
@@ -663,7 +666,7 @@ impl Heap {
             .take()
             .expect("Implementation error: expected a valid AsyncWrite.");
         self.objects[id] = HeapObject::OutputPort(Rc::new(OutputPort {
-            port: RefCell::new(Some(port_ref)),
+            port: Arc::new(Mutex::new(Some(port_ref))),
             string_buffer: None,
         }));
         Ok(self.handle_id(id))
@@ -677,7 +680,7 @@ impl Heap {
         };
         let boxed: Box<dyn AsyncWrite + Unpin> = Box::new(writer);
         self.objects[id] = HeapObject::OutputPort(Rc::new(OutputPort {
-            port: RefCell::new(Some(boxed)),
+            port: Arc::new(Mutex::new(Some(boxed))),
             string_buffer: Some(buffer.clone()),
         }));
         Ok(self.handle_id(id))
